@@ -96,11 +96,24 @@ export function EventsList({ signedIn, onPurchased }: { signedIn: boolean; onPur
   return (
     <section className="w-full max-w-xl flex flex-col gap-4">
       {membership && (
-        <div className="rounded-xl border border-black/10 dark:border-white/15 p-4 text-sm">
-          <p className="font-medium">Estela Pass · {LEVEL_NAMES[membership.level] ?? membership.level}</p>
-          <p className="opacity-70">
-            {membership.xp} XP · descuento {membership.discountBps / 100}% en tus próximas reservas
-          </p>
+        <div className="rounded-xl border border-black/10 dark:border-white/15 p-4 text-sm flex flex-col gap-3">
+          {membership.passId !== null && (
+            // eslint-disable-next-line @next/next/no-img-element -- dynamic SVG from our API
+            <img
+              src={`/api/meta/pass/${membership.passId}/image?xp=${membership.xp}`}
+              alt={`Estela Pass nivel ${membership.level}`}
+              width={400}
+              height={250}
+              className="w-full h-auto rounded-xl"
+            />
+          )}
+          <div>
+            <p className="font-medium">Estela Pass · {LEVEL_NAMES[membership.level] ?? membership.level}</p>
+            <p className="opacity-70">
+              {membership.xp} XP · descuento {membership.discountBps / 100}% en tus próximas reservas
+              {membership.passId === null && " · tu pase se crea con tu primera reserva"}
+            </p>
+          </div>
         </div>
       )}
 

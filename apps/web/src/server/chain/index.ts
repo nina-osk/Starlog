@@ -136,7 +136,30 @@ export async function stampOf(user: string, kind: StampKind, refId: bigint): Pro
   return tx.result ?? null;
 }
 
-export type Membership ={ xp: number; level: Level["tag"]; discountBps: number; passId: number | null };
+/** Who holds Estela Pass `tokenId`; null if it was never minted. */
+export async function passOwner(tokenId: number): Promise<string | null> {
+  const pass = new PassClient({ ...base(), contractId: env().PASS_CONTRACT_ID });
+  return ownerOrNull((await pass.owner_of({ token_id: tokenId })).result);
+}
+
+/**
+ * owner_of fails for unknown tokens; the bindings hand that back as an Err value in
+ * place of the address rather than throwing.
+ */
+function ownerOrNull(result: unknown): string | null {
+  return typeof result === "string" ? result : null;
+}
+
+/** Holder and contents of stamp `tokenId`; null if it doesn't exist (or was revoked). */
+export async function stampInfo(tokenId: number): Promise<{ owner: string; kind: StampKind; refId: bigint } | null> {
+  const stamps = new StampsClient({ ...base(), contractId: env().STAMPS_CONTRACT_ID });
+  const info = (await stamps.stamp_info({ token_id: tokenId })).result;
+  if (!info) return null;
+  const owner = ownerOrNull((await stamps.owner_of({ token_id: tokenId })).result);
+  return owner ? { owner, kind: info.kind.tag, refId: info.ref_id } : null;
+}
+
+export type Membership = { xp: number; level: Level["tag"]; discountBps: number; passId: number | null };
 
 /** The member's Estela Pass, read without a transaction. */
 export async function membership(user: string): Promise<Membership> {

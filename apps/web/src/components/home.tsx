@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { EventsList } from "./events-list";
 import { type EstelaUser, LoginPanel } from "./login-panel";
+import { MyStamps } from "./my-stamps";
 import { MyTickets } from "./my-tickets";
 
 /** Holds the Estela session shared by the login panel, the events and the tickets. */
@@ -26,6 +27,7 @@ export function Home() {
       <LoginPanel user={user} onUserChange={setUser} />
       <EventsList signedIn={user !== null} onPurchased={() => setTicketsVersion((v) => v + 1)} />
       {user && <MyTickets refreshKey={ticketsVersion} />}
+      {user && <MyStamps refreshKey={ticketsVersion} />}
     </>
   );
 }
