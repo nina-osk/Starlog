@@ -10,13 +10,19 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "bindings:build": "node scripts/build-bindings.mjs",
+    "postinstall": "node scripts/build-bindings.mjs",
+    "test:testnet": "node --env-file=.env.local node_modules/vitest/vitest.mjs run --config vitest.testnet.config.mts"
   },
   "dependencies": {
     "@pollar/react": "^0.12.0",
     "@stellar/stellar-sdk": "^16.4.1",
     "@supabase/server": "^1.9.2",
     "drizzle-orm": "^0.45.4",
+    "estela-escrow": "file:../../packages/estela-escrow",
+    "estela-pass": "file:../../packages/estela-pass",
+    "estela-stamps": "file:../../packages/estela-stamps",
     "jose": "^6.2.13",
     "next": "15.5.28",
     "postgres": "^3.4.9",

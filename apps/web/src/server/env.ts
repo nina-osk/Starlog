@@ -15,6 +15,17 @@ const schema = z.object({
   WEB_AUTH_DOMAIN: z.string().min(1),
   HOME_DOMAIN: z.string().min(1),
   STELLAR_NETWORK_PASSPHRASE: z.string().default("Test SDF Network ; September 2015"),
+  STELLAR_RPC_URL: z.string().url().default("https://soroban-testnet.stellar.org"),
+  ESCROW_CONTRACT_ID: z.string().startsWith("C"),
+  PASS_CONTRACT_ID: z.string().startsWith("C"),
+  STAMPS_CONTRACT_ID: z.string().startsWith("C"),
+  USDC_CONTRACT_ID: z.string().startsWith("C"),
+  EURC_CONTRACT_ID: z.string().startsWith("C"),
+  XLM_CONTRACT_ID: z.string().startsWith("C"),
+  // estela-admin: the escrow admin (create_booking, release, refund).
+  ESCROW_ADMIN_SECRET: z.string().startsWith("S"),
+  // estela-backend: `issuer` on EstelaStamps and `awarder` on EstelaPass.
+  BACKEND_SECRET: z.string().startsWith("S"),
 });
 
 export type Env = z.infer<typeof schema>;

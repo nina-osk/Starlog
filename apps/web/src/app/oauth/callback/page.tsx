@@ -17,7 +17,6 @@ export default function OAuthCallback() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const found = SHOWN_PARAMS.flatMap((k) => (params.has(k) ? [[k, params.get(k) ?? ""] as [string, string]] : []));
-    console.info("[Estela] OAuth callback params:", [...params.keys()]);
     setErrors(found);
     if (found.length === 0) {
       // Browsers only allow this for tabs opened by script, which this one is.

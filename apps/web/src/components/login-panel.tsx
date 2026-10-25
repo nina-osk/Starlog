@@ -18,17 +18,14 @@ export function LoginPanel() {
   const [busy, setBusy] = useState(false);
   // Only try automatically once per address, so a failure doesn't loop.
   const attempted = useRef<string | null>(null);
-  // Pollar's own login progress, shown while we debug the Google sign-in.
-  const [pollarStep, setPollarStep] = useState<string>("idle");
+  // Pollar login failures (e.g. the app is out of credits) would otherwise only
+  // show inside its modal, which the user may have closed.
   const [pollarError, setPollarError] = useState<string | null>(null);
 
   useEffect(() => {
     const client = getClient();
-    const show = (s: ReturnType<typeof client.getAuthState>) => {
-      setPollarStep(s.step);
-      setPollarError(s.step === "error" ? `${s.message} (${s.errorCode}, en ${s.previousStep})` : null);
-      console.info("[Estela] Pollar auth:", s.step, s.step === "error" ? s : "");
-    };
+    const show = (s: ReturnType<typeof client.getAuthState>) =>
+      setPollarError(s.step === "error" ? `${s.message} (${s.errorCode})` : null);
     show(client.getAuthState());
     return client.onAuthStateChange(show);
   }, [getClient]);
@@ -88,8 +85,7 @@ export function LoginPanel() {
         >
           Entrar con Pollar
         </button>
-        <p className="font-mono opacity-60">Pollar: {pollarStep}</p>
-        {pollarError && <p className="text-red-600 max-w-md text-center">{pollarError}</p>}
+        {pollarError &&<p className="text-red-600 max-w-md text-center">{pollarError}</p>}
       </div>
     );
   }
