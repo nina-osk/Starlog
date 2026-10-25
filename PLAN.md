@@ -329,6 +329,8 @@ Next.js route handlers en `apps/web` + Postgres (Drizzle) + tareas programadas (
 
 **Estado X2 (2026-10-25): ✅** `scripts/agent-book.mjs`: el agente busca y cotiza pagando con x402, inicia sesión con SEP-10 con su propia clave, reserva vuelo + ticket, **firma él mismo el `fund` del escrow** y confirma. Sin cambios en el servidor (mismas rutas y protecciones que la web). Probado: reserva #1009, PNR KIVB7B, ticket emitido, Estela Pass del agente con 62 XP.
 
+**Estado X3 (2026-10-25): ✅** Servidor MCP en `mcp/` (`@modelcontextprotocol/sdk` 1.32, stdio) con 5 herramientas en español: `buscar_eventos` (gratis), `buscar_vuelos` (0,01 USDC x402), `cotizar` (0,005 USDC x402), `reservar` (marcada `destructiveHint`; su descripción obliga a confirmar precio y pasajero con el usuario; paga por el escrow) y `mi_estela_pass`. Probado con un cliente MCP real (`mcp/test/e2e.mjs`): reserva #1010, PNR PGZAIW. Conectar a Claude Code: ver `mcp/README.md`.
+
 ### Qué es x402
 Protocolo abierto (nacido en Coinbase) que hace útil el código HTTP **402 Payment Required**: una API cobra **por petición** y un agente de IA paga solo, sin cuentas ni tarjetas.
 ```
