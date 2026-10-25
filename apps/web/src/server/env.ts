@@ -32,6 +32,8 @@ const schema = z.object({
   FLIGHT_SERVICE_FEE: z.string().regex(/^\d+(\.\d+)?$/).default("10"),
   // Testnet only: XLM charged per EUR/USD when a package is paid in XLM (no oracle yet).
   DEMO_XLM_PER_FIAT: z.string().regex(/^\d+(\.\d+)?$/).default("1"),
+  // Bearer token for /api/cron/* (Vercel Cron sends it). 32+ random characters.
+  CRON_SECRET: z.string().min(32),
 });
 
 export type Env = z.infer<typeof schema>;
