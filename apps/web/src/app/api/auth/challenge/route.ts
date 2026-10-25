@@ -14,7 +14,13 @@ export async function POST(req: Request) {
   const cfg = sep10Config();
   try {
     const transaction = createChallenge(cfg, parsed.data.account);
-    return NextResponse.json({ transaction, networkPassphrase: cfg.networkPassphrase });
+    // The domains let the wallet run its own SEP-10 checks before signing.
+    return NextResponse.json({
+      transaction,
+      networkPassphrase: cfg.networkPassphrase,
+      homeDomain: cfg.homeDomain,
+      webAuthDomain: cfg.webAuthDomain,
+    });
   } catch (err) {
     if (err instanceof AuthError) {
       return NextResponse.json({ error: err.message }, { status: 400 });

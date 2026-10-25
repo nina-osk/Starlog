@@ -13,6 +13,7 @@
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
+    "@pollar/react": "^0.12.0",
     "@stellar/stellar-sdk": "^16.4.1",
     "@supabase/server": "^1.9.2",
     "drizzle-orm": "^0.45.4",
