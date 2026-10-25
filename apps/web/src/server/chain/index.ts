@@ -112,6 +112,25 @@ export async function refund(id: bigint, toTraveler: bigint, toPayee: bigint): P
   return submit(tx, "refund");
 }
 
+/**
+ * Whether `address` can receive `currency` from the escrow: classic accounts need a
+ * trustline for USDC/EURC (XLM always works), or `release` would fail and the money
+ * would sit in the escrow until refunded.
+ */
+export async function canReceive(address: string, currency: Currency): Promise<boolean> {
+  if (currency === "XLM") return true;
+  const issuer = currency === "USDC" ? env().USDC_ISSUER : env().EURC_ISSUER;
+  const res = await fetch(`${env().HORIZON_URL}/accounts/${address}`, { cache: "no-store" });
+  if (!res.ok) return false;
+  const account: { balances: { asset_code?: string; asset_issuer?: string }[] } = await res.json();
+  return account.balances.some((b) => b.asset_code === currency && b.asset_issuer === issuer);
+}
+
+/** Where the escrow sends Estela's share on release. */
+export async function treasuryAddress(): Promise<string> {
+  return (await escrowAs().treasury_address()).result;
+}
+
 /** The on-chain booking, or null if it doesn't exist. */
 export async function getBooking(id: bigint): Promise<Booking | null> {
   const tx = await escrowAs().get_booking({ id });

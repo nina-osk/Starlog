@@ -2,7 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import type { Session } from "./auth/session";
-import { BookingError } from "./bookings";
+import { assertCanSettle, BookingError } from "./bookings";
 import * as chain from "./chain";
 import { db, schema } from "./db";
 import * as duffel from "./duffel";
@@ -86,6 +86,7 @@ export async function startPackageBooking(
   }
 
   const rate = settlement(offer.totalCurrency, input.payWith);
+  await assertCanSettle(input.payWith, payee);
   const { discountBps } = await chain.membership(session.wallet);
   const price = pricePackage({
     flightTotal: offer.totalAmount,

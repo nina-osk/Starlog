@@ -17,6 +17,20 @@ export class BookingError extends Error {
 type RefundPolicy = { fullRefundUntilHours?: number } | null;
 
 /**
+ * Refuses a booking whose release would fail: the treasury and the organizer must be
+ * able to receive the token (a USDC/EURC trustline), or the traveler's money would
+ * be stuck in the escrow until refunded.
+ */
+export async function assertCanSettle(currency: chain.Currency, payee?: string | null) {
+  const [treasuryOk, payeeOk] = await Promise.all([
+    chain.treasuryAddress().then((t) => chain.canReceive(t, currency)),
+    payee ? chain.canReceive(payee, currency) : Promise.resolve(true),
+  ]);
+  if (!treasuryOk) throw new BookingError(`Estela can't receive ${currency} yet; try another currency`, 503);
+  if (!payeeOk) throw new BookingError(`the organizer can't receive ${currency} yet`, 503);
+}
+
+/**
  * Starts a ticket purchase for a partner event: prices it (member discount from
  * Estela's commission), registers the booking in the escrow and returns the `fund`
  * transaction for the traveler to sign with Pollar.
@@ -44,6 +58,7 @@ export async function startTicketBooking(session: Session, eventId: number) {
     if (sold >= event.capacity) throw new BookingError("sold out", 409);
   }
 
+  await assertCanSettle(event.currency, organizer.payoutWallet);
   const { discountBps } = await chain.membership(session.wallet);
   const price = priceTicket(BigInt(event.ticketPrice), organizer.commissionBps, discountBps);
   const now = new Date();

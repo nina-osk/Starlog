@@ -16,12 +16,16 @@ const schema = z.object({
   HOME_DOMAIN: z.string().min(1),
   STELLAR_NETWORK_PASSPHRASE: z.string().default("Test SDF Network ; September 2015"),
   STELLAR_RPC_URL: z.string().url().default("https://soroban-testnet.stellar.org"),
+  HORIZON_URL: z.string().url().default("https://horizon-testnet.stellar.org"),
   ESCROW_CONTRACT_ID: z.string().startsWith("C"),
   PASS_CONTRACT_ID: z.string().startsWith("C"),
   STAMPS_CONTRACT_ID: z.string().startsWith("C"),
   USDC_CONTRACT_ID: z.string().startsWith("C"),
   EURC_CONTRACT_ID: z.string().startsWith("C"),
   XLM_CONTRACT_ID: z.string().startsWith("C"),
+  // Classic issuers behind the USDC/EURC contracts (Circle's testnet issuers by default).
+  USDC_ISSUER: z.string().startsWith("G").default("GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"),
+  EURC_ISSUER: z.string().startsWith("G").default("GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO"),
   // estela-admin: the escrow admin (create_booking, release, refund).
   ESCROW_ADMIN_SECRET: z.string().startsWith("S"),
   // estela-backend: `issuer` on EstelaStamps and `awarder` on EstelaPass.
