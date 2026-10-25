@@ -1,0 +1,31 @@
+{
+  "network": "testnet",
+  "rpcUrl": "https://soroban-testnet.stellar.org",
+  "networkPassphrase": "Test SDF Network ; September 2015",
+  "protocolVersion": 29,
+  "estelaEscrow": "CBOIYZWJMSMNET35AO2ZVJXGP5BM3HQVTLIH4TZCOCUC35N6BRS2CPIE",
+  "accounts": {
+    "admin": "GBWB3GYU4PUW3JYG5QA26ZIXQZGLFG652HTVA2QQSOVWOTLHKVYYS7WV",
+    "treasury": "GA536WS7HR6SZPOOMK7TMJ5BPTBYOGLXA2Z6BJKAGCFFOAWKMMMIV7CW",
+    "traveler": "GDC46GXLZ5OJ4UX6ZCIHHGPMGQ3RQGUZJQJRHIBEPJGFZO6N6DQSBFN7"
+  },
+  "assets": {
+    "USDC": {
+      "issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "sac": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA"
+    },
+    "EURC": {
+      "issuer": "GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO",
+      "sac": "CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ"
+    },
+    "XLM": {
+      "sac": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+    }
+  },
+  "smokeTest": {
+    "booking": 1,
+    "create": "https://stellar.expert/explorer/testnet/tx/df83ef1d063e41d7647759b529b0dfdb590a25436e3e6661b1485f687eea0a62",
+    "fund": "https://stellar.expert/explorer/testnet/tx/a7387f8ebd2d1eecbd48f5ced331e075ed0611286456152eded5844eeaf27d92",
+    "release": "https://stellar.expert/explorer/testnet/tx/5a66586e4a4ae3022645c181c41acd52cd74597536485c858cc2067e035ec1e7"
+  }
+}
