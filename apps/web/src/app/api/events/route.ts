@@ -13,6 +13,7 @@ export async function GET() {
         description: events.description,
         venue: events.venue,
         city: events.city,
+        airport: events.airport,
         country: events.country,
         startsAt: events.startsAt,
         ticketPrice: events.ticketPrice,

@@ -48,6 +48,68 @@ export function ticketDeadlines(now: Date, eventStartsAt: Date, fullRefundUntilH
   };
 }
 
+const UNIT = BigInt(10_000_000);
+
+/** "47.22" -> 472200000 base units. Rejects more than 7 decimals or junk. */
+export function toUnits(decimal: string): bigint {
+  const m = /^(\d+)(?:\.(\d{1,7}))?$/.exec(decimal.trim());
+  if (!m) throw new Error(`not a decimal amount: ${decimal}`);
+  return BigInt(m[1]) * UNIT + BigInt((m[2] ?? "").padEnd(7, "0"));
+}
+
+/** units × rate (a decimal string), rounded up so Estela never undercharges. */
+export function convert(units: bigint, rate: string): bigint {
+  const r = toUnits(rate);
+  return (units * r + UNIT - BigInt(1)) / UNIT;
+}
+
+export type PackagePrice = {
+  /** Charged into the escrow, in the settlement token's base units. */
+  amount: bigint;
+  /** Organizer's ticket share (0 without a partner ticket). */
+  payeeAmount: bigint;
+  /** Estela's margin left after the discount: fee + ticket commission − discount. */
+  margin: bigint;
+  discount: bigint;
+  /** What Duffel will charge, in the offer's currency (fiat base units). */
+  flightCost: bigint;
+};
+
+/**
+ * A flight (plus, optionally, a partner event ticket) with Estela's service fee.
+ * Flight and fee are in the offer's fiat currency and converted with `rate` (1 for
+ * EURC/USDC); the ticket is already priced in the settlement token. The member
+ * discount only eats into Estela's margin (fee + ticket commission).
+ */
+export function pricePackage(opts: {
+  flightTotal: string;
+  serviceFee: string;
+  passengers: number;
+  /** Price in the settlement token's base units. */
+  ticket?: { price: bigint; commissionBps: number };
+  discountBps: number;
+  rate: string;
+}): PackagePrice {
+  const flightCost = toUnits(opts.flightTotal);
+  const flight = convert(flightCost, opts.rate);
+  const fee = convert(toUnits(opts.serviceFee) * BigInt(opts.passengers), opts.rate);
+  const ticketPrice = opts.ticket?.price ?? BigInt(0);
+  const commission = opts.ticket ? (ticketPrice * BigInt(opts.ticket.commissionBps)) / BPS : BigInt(0);
+
+  const gross = flight + fee + ticketPrice;
+  const fullMargin = fee + commission;
+  const wanted = (gross * BigInt(opts.discountBps)) / BPS;
+  const discount = wanted < fullMargin ? wanted : fullMargin;
+
+  return {
+    amount: gross - discount,
+    payeeAmount: opts.ticket ? ticketPrice - commission : BigInt(0),
+    margin: fullMargin - discount,
+    discount,
+    flightCost,
+  };
+}
+
 /** 123456789 base units -> "12.3456789" (trailing zeros trimmed). */
 export function formatAmount(units: bigint): string {
   const negative = units < BigInt(0);

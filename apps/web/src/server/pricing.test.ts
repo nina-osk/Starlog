@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatAmount, priceTicket, ticketDeadlines } from "./pricing";
+import { convert, formatAmount, pricePackage, priceTicket, ticketDeadlines, toUnits } from "./pricing";
 
 const UNIT = BigInt(10_000_000);
 
@@ -57,6 +57,67 @@ describe("ticketDeadlines", () => {
   it("offers no free cancellation when the event is too close", () => {
     const d = ticketDeadlines(now, new Date("2026-10-26T12:00:00Z"));
     expect(d.refundUntil).toEqual(now);
+  });
+});
+
+describe("toUnits / convert", () => {
+  it("parses decimal strings exactly", () => {
+    expect(toUnits("47.22")).toBe(BigInt(472_200_000));
+    expect(toUnits("10")).toBe(BigInt(100_000_000));
+    expect(toUnits("0.0000001")).toBe(BigInt(1));
+    expect(() => toUnits("1.12345678")).toThrow();
+    expect(() => toUnits("-3")).toThrow();
+  });
+
+  it("converts with a rate, rounding up", () => {
+    expect(convert(BigInt(100_000_000), "1")).toBe(BigInt(100_000_000));
+    expect(convert(BigInt(100_000_000), "2.5")).toBe(BigInt(250_000_000));
+    expect(convert(BigInt(1), "0.5")).toBe(BigInt(1));
+  });
+});
+
+describe("pricePackage", () => {
+  const event = { price: BigInt(150) * UNIT, commissionBps: 800 };
+
+  it("adds flight, service fee and ticket; the organizer keeps its share", () => {
+    const p = pricePackage({ flightTotal: "47.22", serviceFee: "10", passengers: 1, ticket: event, discountBps: 0, rate: "1" });
+    expect(p.flightCost).toBe(toUnits("47.22"));
+    expect(p.amount).toBe(toUnits("207.22")); // 47.22 + 10 + 150
+    expect(p.payeeAmount).toBe(toUnits("138"));
+    expect(p.margin).toBe(toUnits("22")); // fee 10 + commission 12
+    expect(p.amount - p.payeeAmount - p.margin).toBe(p.flightCost); // the rest pays Duffel
+  });
+
+  it("takes the discount from Estela's margin only", () => {
+    // Legend 15 % of 207.22 would be 31.08, more than the 22 margin: capped at 22.
+    const p = pricePackage({ flightTotal: "47.22", serviceFee: "10", passengers: 1, ticket: event, discountBps: 1500, rate: "1" });
+    expect(p.discount).toBe(toUnits("22"));
+    expect(p.margin).toBe(BigInt(0));
+    expect(p.amount).toBe(toUnits("185.22"));
+    expect(p.payeeAmount).toBe(toUnits("138"));
+  });
+
+  it("works without a ticket and charges the fee per passenger", () => {
+    const p = pricePackage({ flightTotal: "100", serviceFee: "10", passengers: 2, discountBps: 500, rate: "1" });
+    expect(p.payeeAmount).toBe(BigInt(0));
+    expect(p.discount).toBe(toUnits("6")); // 5 % of 120
+    expect(p.amount).toBe(toUnits("114"));
+  });
+
+  it("converts flight and fee to the settlement token, not the ticket", () => {
+    // 40 € flight + 10 € fee at 3 XLM/€, plus a 5 XLM ticket with 8 % commission.
+    const p = pricePackage({
+      flightTotal: "40",
+      serviceFee: "10",
+      passengers: 1,
+      ticket: { price: BigInt(5) * UNIT, commissionBps: 800 },
+      discountBps: 0,
+      rate: "3",
+    });
+    expect(p.amount).toBe(toUnits("155"));
+    expect(p.payeeAmount).toBe(toUnits("4.6"));
+    expect(p.margin).toBe(toUnits("30.4"));
+    expect(p.flightCost).toBe(toUnits("40")); // Duffel is still paid in fiat
   });
 });
 

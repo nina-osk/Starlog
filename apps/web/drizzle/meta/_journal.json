@@ -22,6 +22,13 @@
       "when": 1792958873940,
       "tag": "0002_bookings_id_start",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792962241809,
+      "tag": "0003_event_airport",
+      "breakpoints": true
     }
   ]
 }

@@ -26,11 +26,11 @@ try {
   } else {
     const startsAt = new Date(Date.now() + 30 * DAY);
     const [event] = await sql`
-      insert into events (organizer_id, source, title, description, venue, city, country,
+      insert into events (organizer_id, source, title, description, venue, city, airport, country,
                           starts_at, ends_at, ticket_price, currency, capacity, refund_policy, status)
       values (${organizer.id}, 'partner', ${EVENT_TITLE},
               'Demos, charlas cortas y networking del ecosistema Stellar.',
-              'Impact Hub Picasso', 'Madrid', 'ES',
+              'Impact Hub Picasso', 'Madrid', 'MAD', 'ES',
               ${startsAt}, ${new Date(startsAt.getTime() + 4 * 3_600_000)},
               ${"50000000"}, 'XLM', 50, ${sql.json({ fullRefundUntilHours: 48 })}, 'published')
       returning id`;

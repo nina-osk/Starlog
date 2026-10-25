@@ -26,6 +26,12 @@ const schema = z.object({
   ESCROW_ADMIN_SECRET: z.string().startsWith("S"),
   // estela-backend: `issuer` on EstelaStamps and `awarder` on EstelaPass.
   BACKEND_SECRET: z.string().startsWith("S"),
+  // Duffel API token (duffel_test_... on testnet). Flights are paid from Estela's balance.
+  DUFFEL_TOKEN: z.string().startsWith("duffel_"),
+  // Estela's service fee per flight passenger, in the offer's currency.
+  FLIGHT_SERVICE_FEE: z.string().regex(/^\d+(\.\d+)?$/).default("10"),
+  // Testnet only: XLM charged per EUR/USD when a package is paid in XLM (no oracle yet).
+  DEMO_XLM_PER_FIAT: z.string().regex(/^\d+(\.\d+)?$/).default("1"),
 });
 
 export type Env = z.infer<typeof schema>;

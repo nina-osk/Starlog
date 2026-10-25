@@ -72,6 +72,8 @@ export const events = pgTable(
     description: text("description"),
     venue: text("venue"),
     city: text("city").notNull(),
+    // IATA code of the nearest airport: the destination of flight packages.
+    airport: text("airport"),
     country: text("country").notNull(),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),

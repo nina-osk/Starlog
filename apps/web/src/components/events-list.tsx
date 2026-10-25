@@ -2,8 +2,10 @@
 
 import { usePollar } from "@pollar/react";
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, post } from "@/lib/api";
+import { post } from "@/lib/api";
+import { confirmWithRetry } from "@/lib/bookings";
 import { formatAmount } from "@/server/pricing";
+import { FlightPackage } from "./flight-package";
 
 type EventItem = {
   id: number;
@@ -11,6 +13,7 @@ type EventItem = {
   description: string | null;
   venue: string | null;
   city: string;
+  airport: string | null;
   startsAt: string;
   ticketPrice: string | null;
   currency: string;
@@ -145,21 +148,18 @@ export function EventsList({ signedIn, onPurchased }: { signedIn: boolean; onPur
             )}
             {purchase?.message && <p className="text-sm">{purchase.message}</p>}
             {purchase?.error && <p className="text-sm text-red-600">{purchase.error}</p>}
+            {signedIn && event.airport && (
+              <FlightPackage
+                event={event}
+                onBooked={() => {
+                  loadMembership();
+                  onPurchased();
+                }}
+              />
+            )}
           </article>
         );
       })}
     </section>
   );
-}
-
-/** The fund transaction can take a few seconds to land; retry while it's pending. */
-async function confirmWithRetry(bookingId: number, fundHash: string | undefined, attempts = 6) {
-  for (let i = 0; ; i++) {
-    try {
-      return await post<{ bookingId: number }>(`/api/bookings/${bookingId}/confirm`, { fundHash });
-    } catch (err) {
-      if (!(err instanceof ApiError) || err.status !== 409 || i >= attempts - 1) throw err;
-      await new Promise((r) => setTimeout(r, 2500));
-    }
-  }
 }
