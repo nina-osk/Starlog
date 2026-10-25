@@ -7,7 +7,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const session = await currentSession();
   if (!session) return unauthorized();
   const { id } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "invalid ticket id" }, { status: 400 });
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "Ticket no válido." }, { status: 400 });
   try {
     return json(await ticketQr(session, id), { headers: { "Cache-Control": "no-store" } });
   } catch (err) {

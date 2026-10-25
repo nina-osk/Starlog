@@ -16,15 +16,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const session = await currentSession();
   if (!session) return unauthorized();
   const id = Number((await params).id);
-  if (!Number.isSafeInteger(id) || id <= 0) return json({ error: "invalid booking id" }, { status: 400 });
+  if (!Number.isSafeInteger(id) || id <= 0) return json({ error: "Reserva no válida." }, { status: 400 });
   const parsed = body.safeParse(await req.json().catch(() => ({})));
-  if (!parsed.success) return json({ error: "invalid fundHash" }, { status: 400 });
+  if (!parsed.success) return json({ error: "Comprobante de pago no válido." }, { status: 400 });
   try {
     const [booking] = await db()
       .select({ kind: schema.bookings.kind })
       .from(schema.bookings)
       .where(and(eq(schema.bookings.id, id), eq(schema.bookings.userId, session.userId)));
-    if (!booking) return json({ error: "booking not found" }, { status: 404 });
+    if (!booking) return json({ error: "No encontramos esa reserva." }, { status: 404 });
     const confirm = booking.kind === "ticket" ? confirmTicketBooking : confirmPackageBooking;
     return json(await confirm(session, id, parsed.data.fundHash));
   } catch (err) {

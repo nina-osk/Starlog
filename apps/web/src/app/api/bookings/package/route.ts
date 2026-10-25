@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   const parsed = body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     const field = parsed.error.issues[0]?.path.join(".") ?? "body";
-    return json({ error: `invalid ${field}` }, { status: 400 });
+    return json({ error: `Revisa el campo: ${field}` }, { status: 400 });
   }
   try {
     return json(await startPackageBooking(session, parsed.data), { status: 201 });

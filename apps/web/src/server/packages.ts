@@ -2,7 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import type { Session } from "./auth/session";
-import { assertCanSettle, BookingError } from "./bookings";
+import { assertCanPay, assertCanSettle, BookingError } from "./bookings";
 import * as chain from "./chain";
 import { db, schema } from "./db";
 import * as duffel from "./duffel";
@@ -33,7 +33,7 @@ const CONFIRM_MS = 60 * 60 * 1000;
 function settlement(fiat: string, payWith: PayWith): string {
   if (payWith === "XLM") return env().DEMO_XLM_PER_FIAT;
   const expected = payWith === "EURC" ? "EUR" : "USD";
-  if (fiat !== expected) throw new BookingError(`this flight is priced in ${fiat}; pay with ${fiat === "EUR" ? "EURC" : "USDC"}`);
+  if (fiat !== expected) throw new BookingError(`Este vuelo se cobra en ${fiat}: paga con ${fiat === "EUR" ? "EURC" : "USDC"}.`);
   return "1";
 }
 
@@ -48,12 +48,12 @@ export async function startPackageBooking(
 ) {
   const database = db();
   const offer = await duffel.getOffer(input.offerId).catch(() => {
-    throw new BookingError("this flight offer is no longer available: search again", 410);
+    throw new BookingError("Esa oferta de vuelo ya no está disponible. Busca de nuevo.", 410);
   });
-  if (offer.passengerIds.length !== 1) throw new BookingError("packages are for one passenger for now");
+  if (offer.passengerIds.length !== 1) throw new BookingError("Por ahora los paquetes son para un solo pasajero.");
   const offerExpires = new Date(offer.expiresAt).getTime();
   if (offerExpires < Date.now() + 2 * 60_000) {
-    throw new BookingError("this flight offer is about to expire: search again", 410);
+    throw new BookingError("Esa oferta de vuelo está por vencer. Busca de nuevo.", 410);
   }
 
   let ticket: { price: bigint; commissionBps: number } | undefined;
@@ -65,10 +65,10 @@ export async function startPackageBooking(
       .innerJoin(organizers, eq(events.organizerId, organizers.id))
       .where(eq(events.id, input.eventId));
     if (!row || row.event.status !== "published" || !row.event.ticketPrice) {
-      throw new BookingError("event not found", 404);
+      throw new BookingError("No encontramos ese evento.", 404);
     }
     if (row.event.currency !== input.payWith) {
-      throw new BookingError(`this event's ticket is sold in ${row.event.currency}`);
+      throw new BookingError(`El ticket de este evento se paga en ${row.event.currency}.`);
     }
     const [owned] = await database
       .select({ id: bookings.id })
@@ -80,7 +80,7 @@ export async function startPackageBooking(
           inArray(bookings.status, ["escrow_created", "funded", "confirmed"]),
         ),
       );
-    if (owned) throw new BookingError("ya tienes un ticket para este evento: reserva solo el vuelo", 409);
+    if (owned) throw new BookingError("Ya tienes un ticket para este evento: reserva solo el vuelo.", 409);
     ticket = { price: BigInt(row.event.ticketPrice), commissionBps: row.organizer.commissionBps };
     payee = row.organizer.payoutWallet;
   }
@@ -96,6 +96,7 @@ export async function startPackageBooking(
     discountBps,
     rate,
   });
+  await assertCanPay(session.wallet, input.payWith, price.amount);
 
   const now = Date.now();
   const payBefore = new Date(Math.min(now + PAY_WINDOW_MS, offerExpires - 60_000));
@@ -180,7 +181,7 @@ export async function confirmPackageBooking(session: Session, bookingId: number,
     .from(bookings)
     .innerJoin(quotes, eq(bookings.quoteId, quotes.id))
     .where(and(eq(bookings.id, bookingId), eq(bookings.userId, session.userId)));
-  if (!row) throw new BookingError("booking not found", 404);
+  if (!row) throw new BookingError("No encontramos esa reserva.", 404);
   const { booking, quote } = row;
   const items = quote.items as PackageItems;
 
@@ -188,13 +189,13 @@ export async function confirmPackageBooking(session: Session, bookingId: number,
     return { bookingId, status: "confirmed" as const, bookingReference: items.order?.bookingReference ?? null };
   }
   if (booking.status !== "escrow_created" && booking.status !== "funded" && booking.status !== "supplier_booking") {
-    throw new BookingError(`booking is ${booking.status}`, 409);
+    throw new BookingError(`Esta reserva ya no se puede confirmar (estado: ${booking.status}).`, 409);
   }
 
   const onChain = await chain.getBooking(BigInt(bookingId));
   const status = onChain?.status.tag;
-  if (status === "Pending") throw new BookingError("the payment hasn't arrived yet", 409);
-  if (status !== "Funded") throw new BookingError(`booking can't be confirmed (escrow status: ${status ?? "missing"})`, 409);
+  if (status === "Pending") throw new BookingError("Todavía no recibimos tu pago. Espera unos segundos.", 409, "payment_pending");
+  if (status !== "Funded") throw new BookingError(`No se puede confirmar esta reserva (estado en el escrow: ${status ?? "no existe"}).`, 409);
 
   const txHashes: Record<string, string> = { ...(booking.txHashes as Record<string, string>) };
   if (fundHash) txHashes.fund = fundHash;
@@ -204,7 +205,7 @@ export async function confirmPackageBooking(session: Session, bookingId: number,
   const refundAll = async (why: string, status: "refunded" | "failed") => {
     txHashes.refund = await chain.refund(BigInt(bookingId), BigInt(booking.amount), BigInt(0));
     await setStatus(status);
-    throw new BookingError(`${why} Your payment was refunded in full.`, 409);
+    throw new BookingError(`${why} Te devolvimos el pago completo.`, 409);
   };
 
   // Only buy the flight if it still costs what we quoted.
@@ -217,16 +218,16 @@ export async function confirmPackageBooking(session: Session, bookingId: number,
     try {
       offer = await duffel.getOffer(items.offerId);
     } catch {
-      return refundAll("The flight offer expired before we could book it.", "refunded");
+      return refundAll("La oferta del vuelo venció antes de poder reservarlo.", "refunded");
     }
     if (toUnits(offer.totalAmount) > toUnits(items.flightTotal) || offer.totalCurrency !== items.flightCurrency) {
-      return refundAll(`The flight price changed (${offer.totalAmount} ${offer.totalCurrency}).`, "refunded");
+      return refundAll(`El precio del vuelo cambió (${offer.totalAmount} ${offer.totalCurrency}).`, "refunded");
     }
     try {
       order = await duffel.createOrder(offer, items.passengers);
     } catch (err) {
       console.error(err);
-      return refundAll("The airline couldn't confirm the flight.", "failed");
+      return refundAll("La aerolínea no pudo confirmar el vuelo.", "failed");
     }
     // Record the order before releasing, so a retry never books the flight twice.
     await database

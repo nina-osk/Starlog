@@ -8,11 +8,11 @@ const body = z.object({ toTraveler: units.optional(), toPayee: units.optional() 
 
 /** Refunds a booking still held in the escrow. Body amounts are base units; full refund by default. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await requireRole("admin"))) return json({ error: "admins only" }, { status: 403 });
+  if (!(await requireRole("admin"))) return json({ error: "Solo para administradores." }, { status: 403 });
   const id = Number((await params).id);
-  if (!Number.isSafeInteger(id) || id <= 0) return json({ error: "invalid booking id" }, { status: 400 });
+  if (!Number.isSafeInteger(id) || id <= 0) return json({ error: "Reserva no válida." }, { status: 400 });
   const parsed = body.safeParse(await req.json().catch(() => ({})));
-  if (!parsed.success) return json({ error: "amounts must be base-unit integers" }, { status: 400 });
+  if (!parsed.success) return json({ error: "Montos no válidos." }, { status: 400 });
   try {
     return json(await adminRefund(id, parsed.data.toTraveler, parsed.data.toPayee));
   } catch (err) {

@@ -126,6 +126,31 @@ export async function canReceive(address: string, currency: Currency): Promise<b
   return account.balances.some((b) => b.asset_code === currency && b.asset_issuer === issuer);
 }
 
+/** `address`'s spendable balance of `currency`, in base units (0 if it can't hold it). */
+export async function balanceOf(address: string, currency: Currency): Promise<bigint> {
+  const res = await fetch(`${env().HORIZON_URL}/accounts/${address}`, { cache: "no-store" });
+  if (!res.ok) return BigInt(0);
+  const account: {
+    balances: { asset_type: string; asset_code?: string; asset_issuer?: string; balance: string }[];
+    subentry_count: number;
+    num_sponsoring?: number;
+    num_sponsored?: number;
+  } = await res.json();
+  const issuer = currency === "USDC" ? env().USDC_ISSUER : currency === "EURC" ? env().EURC_ISSUER : null;
+  const line = account.balances.find((b) =>
+    currency === "XLM" ? b.asset_type === "native" : b.asset_code === currency && b.asset_issuer === issuer,
+  );
+  if (!line) return BigInt(0);
+  const [whole, frac = ""] = line.balance.split(".");
+  let units = BigInt(whole) * BigInt(10_000_000) + BigInt(frac.padEnd(7, "0").slice(0, 7));
+  if (currency === "XLM") {
+    // XLM held as the account's minimum reserve can't be spent.
+    const entries = 2 + account.subentry_count + (account.num_sponsoring ?? 0) - (account.num_sponsored ?? 0);
+    units -= BigInt(entries) * BigInt(5_000_000);
+  }
+  return units > BigInt(0) ? units : BigInt(0);
+}
+
 /** Where the escrow sends Estela's share on release. */
 export async function treasuryAddress(): Promise<string> {
   return (await escrowAs().treasury_address()).result;

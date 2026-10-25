@@ -4,17 +4,28 @@ import { and, count, desc, eq, inArray } from "drizzle-orm";
 import type { Session } from "./auth/session";
 import * as chain from "./chain";
 import { db, schema } from "./db";
-import { priceTicket, ticketDeadlines } from "./pricing";
+import { formatAmount, priceTicket, ticketDeadlines } from "./pricing";
 
 const { bookings, events, organizers, quotes, tickets } = schema;
 
 export class BookingError extends Error {
-  constructor(message: string, readonly status = 400) {
+  constructor(message: string, readonly status = 400, readonly code?: string) {
     super(message);
   }
 }
 
 type RefundPolicy = { fullRefundUntilHours?: number } | null;
+
+/** Refuses up front a payment the traveler's wallet can't cover, before touching the escrow. */
+export async function assertCanPay(wallet: string, currency: chain.Currency, amount: bigint) {
+  const balance = await chain.balanceOf(wallet, currency);
+  if (balance < amount) {
+    throw new BookingError(
+      `Saldo insuficiente: necesitas ${formatAmount(amount)} ${currency} y tienes ${formatAmount(balance)} ${currency}.`,
+      402,
+    );
+  }
+}
 
 /**
  * Refuses a booking whose release would fail: the treasury and the organizer must be
@@ -26,8 +37,8 @@ export async function assertCanSettle(currency: chain.Currency, payee?: string |
     chain.treasuryAddress().then((t) => chain.canReceive(t, currency)),
     payee ? chain.canReceive(payee, currency) : Promise.resolve(true),
   ]);
-  if (!treasuryOk) throw new BookingError(`Estela can't receive ${currency} yet; try another currency`, 503);
-  if (!payeeOk) throw new BookingError(`the organizer can't receive ${currency} yet`, 503);
+  if (!treasuryOk) throw new BookingError(`Por ahora no podemos cobrar en ${currency}. Elige otra moneda.`, 503);
+  if (!payeeOk) throw new BookingError(`El organizador todavía no puede cobrar en ${currency}. Elige otra moneda.`, 503);
 }
 
 /**
@@ -42,10 +53,10 @@ export async function startTicketBooking(session: Session, eventId: number) {
     .from(events)
     .innerJoin(organizers, eq(events.organizerId, organizers.id))
     .where(eq(events.id, eventId));
-  if (!row || row.event.status !== "published") throw new BookingError("event not found", 404);
+  if (!row || row.event.status !== "published") throw new BookingError("No encontramos ese evento.", 404);
   const { event, organizer } = row;
-  if (!event.ticketPrice) throw new BookingError("this event has no paid tickets");
-  if (event.startsAt <= new Date()) throw new BookingError("this event has already started");
+  if (!event.ticketPrice) throw new BookingError("Este evento no vende tickets.");
+  if (event.startsAt <= new Date()) throw new BookingError("Este evento ya empezó.");
 
   const resumed = await resumeOwnBooking(session, eventId, BigInt(event.ticketPrice));
   if (resumed) return resumed;
@@ -55,12 +66,13 @@ export async function startTicketBooking(session: Session, eventId: number) {
       .select({ sold: count() })
       .from(bookings)
       .where(and(eq(bookings.eventId, eventId), inArray(bookings.status, ["escrow_created", "funded", "confirmed"])));
-    if (sold >= event.capacity) throw new BookingError("sold out", 409);
+    if (sold >= event.capacity) throw new BookingError("Entradas agotadas.", 409);
   }
 
   await assertCanSettle(event.currency, organizer.payoutWallet);
   const { discountBps } = await chain.membership(session.wallet);
   const price = priceTicket(BigInt(event.ticketPrice), organizer.commissionBps, discountBps);
+  await assertCanPay(session.wallet, event.currency, price.amount);
   const now = new Date();
   const policy = event.refundPolicy as RefundPolicy;
   const deadlines = ticketDeadlines(now, event.startsAt, policy?.fullRefundUntilHours);
@@ -140,7 +152,7 @@ async function resumeOwnBooking(session: Session, eventId: number, ticketPrice: 
     .orderBy(desc(bookings.id))
     .limit(1);
   if (!mine) return null;
-  if (mine.status === "confirmed") throw new BookingError("you already have a ticket for this event", 409);
+  if (mine.status === "confirmed") throw new BookingError("Ya tienes un ticket para este evento.", 409);
 
   const amount = BigInt(mine.amount);
   const payeeAmount = BigInt(mine.payeeAmount);
@@ -168,14 +180,14 @@ export async function confirmTicketBooking(session: Session, bookingId: number, 
     .select()
     .from(bookings)
     .where(and(eq(bookings.id, bookingId), eq(bookings.userId, session.userId)));
-  if (!booking) throw new BookingError("booking not found", 404);
+  if (!booking) throw new BookingError("No encontramos esa reserva.", 404);
 
   if (booking.status !== "confirmed") {
     const onChain = await chain.getBooking(BigInt(bookingId));
     const status = onChain?.status.tag;
-    if (status === "Pending") throw new BookingError("the payment hasn't arrived yet", 409);
+    if (status === "Pending") throw new BookingError("Todavía no recibimos tu pago. Espera unos segundos.", 409, "payment_pending");
     if (status !== "Funded" && status !== "Released") {
-      throw new BookingError(`booking can't be confirmed (escrow status: ${status ?? "missing"})`, 409);
+      throw new BookingError(`No se puede confirmar esta reserva (estado en el escrow: ${status ?? "no existe"}).`, 409);
     }
     const txHashes: Record<string, string> = { ...(booking.txHashes as Record<string, string>) };
     if (fundHash) txHashes.fund = fundHash;

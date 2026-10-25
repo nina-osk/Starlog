@@ -45,18 +45,18 @@ export async function listBookings(limit = 100) {
 export async function adminRefund(bookingId: number, toTraveler?: bigint, toPayee = BigInt(0)) {
   const database = db();
   const [booking] = await database.select().from(bookings).where(eq(bookings.id, bookingId));
-  if (!booking) throw new BookingError("booking not found", 404);
+  if (!booking) throw new BookingError("No encontramos esa reserva.", 404);
   const onChain = await chain.getBooking(BigInt(bookingId));
   const status = onChain?.status.tag;
   if (status === "Released") {
-    throw new BookingError("already released: refund it from the treasury, outside the escrow", 409);
+    throw new BookingError("Esta reserva ya se liberó: el reembolso hay que hacerlo desde la treasury, fuera del escrow.", 409);
   }
-  if (status !== "Funded") throw new BookingError(`nothing to refund (escrow status: ${status ?? "missing"})`, 409);
+  if (status !== "Funded") throw new BookingError(`No hay nada que reembolsar (estado en el escrow: ${status ?? "no existe"}).`, 409);
 
   const amount = BigInt(booking.amount);
   const back = toTraveler ?? amount;
   if (back < BigInt(0) || toPayee < BigInt(0) || back + toPayee > amount) {
-    throw new BookingError("refund amounts exceed what was paid");
+    throw new BookingError("Los montos del reembolso superan lo pagado.");
   }
   const hash = await chain.refund(BigInt(bookingId), back, toPayee);
   await database

@@ -16,11 +16,13 @@ const body = z.object({
 export async function POST(req: Request) {
   if (!(await currentSession())) return unauthorized();
   const parsed = body.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return json({ error: "origin, destination (IATA) and departureDate are required" }, { status: 400 });
+  if (!parsed.success) return json({ error: "Indica el aeropuerto de origen (3 letras) y la fecha." }, { status: 400 });
   try {
     return json(await searchFlights({ ...parsed.data, adults: 1 }));
   } catch (err) {
-    if (err instanceof DuffelError) return json({ error: err.message }, { status: err.status >= 500 ? 502 : 400 });
+    if (err instanceof DuffelError && err.status < 500) {
+      return json({ error: "No encontramos vuelos con esos datos. Revisa el aeropuerto (3 letras, p. ej. LIS) y la fecha." }, { status: 400 });
+    }
     return errorResponse(err);
   }
 }

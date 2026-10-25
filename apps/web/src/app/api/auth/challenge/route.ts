@@ -9,7 +9,7 @@ const body = z.object({ account: z.string() });
 export async function POST(req: Request) {
   const parsed = body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json({ error: "account is required" }, { status: 400 });
+    return NextResponse.json({ error: "Falta la dirección de la wallet." }, { status: 400 });
   }
   const cfg = sep10Config();
   try {

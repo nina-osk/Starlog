@@ -33,7 +33,7 @@ export async function ticketQr(session: Session, ticketId: string) {
     .select({ id: tickets.id, secret: tickets.qrSecret, checkedInAt: tickets.checkedInAt })
     .from(tickets)
     .where(and(eq(tickets.id, ticketId), eq(tickets.userId, session.userId)));
-  if (!ticket) throw new BookingError("ticket not found", 404);
+  if (!ticket) throw new BookingError("No encontramos ese ticket.", 404);
   return { payload: qrPayload(ticket.id, ticket.secret), checkedInAt: ticket.checkedInAt };
 }
 
@@ -43,7 +43,7 @@ export async function ticketQr(session: Session, ticketId: string) {
  */
 export async function checkIn(staff: Session, payload: string) {
   const parsed = parseQr(payload);
-  if (!parsed) throw new BookingError("this is not an Estela ticket code");
+  if (!parsed) throw new BookingError("Este código no es un ticket de Estela.");
 
   const database = db();
   const [row] = await database
@@ -53,7 +53,7 @@ export async function checkIn(staff: Session, payload: string) {
     .innerJoin(bookings, eq(tickets.bookingId, bookings.id))
     .innerJoin(users, eq(tickets.userId, users.id))
     .where(eq(tickets.id, parsed.ticketId));
-  if (!row) throw new BookingError("ticket not found", 404);
+  if (!row) throw new BookingError("No encontramos ese ticket.", 404);
   const { ticket, event, booking, attendee } = row;
 
   // Organizers can only check people into their own events.
@@ -64,15 +64,15 @@ export async function checkIn(staff: Session, payload: string) {
         .select({ id: organizers.id })
         .from(organizers)
         .where(and(eq(organizers.userId, staff.userId), eq(organizers.id, event.organizerId)))).length > 0;
-    if (!own) throw new BookingError("this ticket is for another organizer's event", 403);
+    if (!own) throw new BookingError("Este ticket es de un evento de otro organizador.", 403);
   }
 
   if (!verifyQr(payload, ticket.qrSecret)) {
-    throw new BookingError("expired or invalid code: ask for the QR on screen again", 400);
+    throw new BookingError("Código vencido o inválido: pide que muestren el QR otra vez.", 400);
   }
-  if (booking.status !== "confirmed") throw new BookingError("this booking isn't confirmed", 409);
+  if (booking.status !== "confirmed") throw new BookingError("La reserva de este ticket no está confirmada.", 409);
   if (ticket.checkedInAt) {
-    throw new BookingError(`already checked in at ${ticket.checkedInAt.toISOString()}`, 409);
+    throw new BookingError(`Este ticket ya hizo check-in (${ticket.checkedInAt.toLocaleString("es-ES")}).`, 409);
   }
 
   // One event stamp per person and event, even if they hold several tickets.

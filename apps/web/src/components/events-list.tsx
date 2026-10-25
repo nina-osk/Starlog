@@ -3,7 +3,7 @@
 import { usePollar } from "@pollar/react";
 import { useCallback, useEffect, useState } from "react";
 import { post } from "@/lib/api";
-import { confirmWithRetry } from "@/lib/bookings";
+import { confirmWithRetry, payErrorMessage } from "@/lib/bookings";
 import { formatAmount } from "@/server/pricing";
 import { FlightPackage } from "./flight-package";
 
@@ -72,8 +72,8 @@ export function EventsList({ signedIn, onPurchased }: { signedIn: boolean; onPur
         track(event.id, { busy: true, message: "Confirma el pago en Pollar…" });
         const outcome = await signAndSubmitTx(started.fundXdr);
         if (outcome.status !== "success" && outcome.status !== "pending") {
-          const detail = "details" in outcome ? outcome.details : undefined;
-          throw new Error(`Pollar no envió el pago (${outcome.status}${detail ? `: ${detail}` : ""})`);
+          console.warn("Pollar did not send the payment", outcome);
+          throw new Error(payErrorMessage(outcome));
         }
         fundHash = outcome.hash;
       }

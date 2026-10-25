@@ -12,7 +12,7 @@ export async function GET(req: Request) {
   const given = req.headers.get("authorization") ?? "";
   const expected = `Bearer ${secret}`;
   const ok = given.length === expected.length && timingSafeEqual(Buffer.from(given), Buffer.from(expected));
-  if (!ok) return json({ error: "unauthorized" }, { status: 401 });
+  if (!ok) return json({ error: "No autorizado." }, { status: 401 });
   try {
     return json(await mintTripStamps());
   } catch (err) {

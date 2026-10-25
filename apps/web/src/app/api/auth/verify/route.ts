@@ -12,7 +12,7 @@ const body = z.object({ transaction: z.string() });
 export async function POST(req: Request) {
   const parsed = body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json({ error: "transaction is required" }, { status: 400 });
+    return NextResponse.json({ error: "Falta la transacción firmada." }, { status: 400 });
   }
 
   let account: string;
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     .onConflictDoNothing()
     .returning({ txHash: schema.authChallenges.txHash });
   if (fresh.length === 0) {
-    return NextResponse.json({ error: "challenge already used" }, { status: 401 });
+    return NextResponse.json({ error: "Este acceso ya se usó. Vuelve a iniciar sesión." }, { status: 401 });
   }
 
   const [user] = await database

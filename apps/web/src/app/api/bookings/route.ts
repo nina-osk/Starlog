@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   const session = await currentSession();
   if (!session) return unauthorized();
   const parsed = body.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return json({ error: "eventId is required" }, { status: 400 });
+  if (!parsed.success) return json({ error: "Falta el evento." }, { status: 400 });
   try {
     return json(await startTicketBooking(session, parsed.data.eventId), { status: 201 });
   } catch (err) {
