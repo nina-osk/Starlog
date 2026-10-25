@@ -23,7 +23,8 @@ const amount = (name: string) => numeric(name, { precision: 39, scale: 0 });
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
 export const userRole = pgEnum("user_role", ["traveler", "organizer", "staff", "admin"]);
-export const currency = pgEnum("currency", ["USDC", "EURC"]);
+// XLM is accepted by the testnet escrow too, for demos with freshly created wallets.
+export const currency = pgEnum("currency", ["USDC", "EURC", "XLM"]);
 export const eventSource = pgEnum("event_source", ["partner", "luma"]);
 export const eventStatus = pgEnum("event_status", ["draft", "published", "cancelled"]);
 export const bookingKind = pgEnum("booking_kind", ["ticket", "package", "travel"]);

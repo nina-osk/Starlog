@@ -1,0 +1,141 @@
+"use client";
+
+import { usePollar } from "@pollar/react";
+import { useCallback, useEffect, useState } from "react";
+import { ApiError, post } from "@/lib/api";
+import { formatAmount } from "@/server/pricing";
+
+type EventItem = {
+  id: number;
+  title: string;
+  description: string | null;
+  venue: string | null;
+  city: string;
+  startsAt: string;
+  ticketPrice: string | null;
+  currency: string;
+};
+
+type Membership = { xp: number; level: string; discountBps: number; passId: number | null };
+
+type Started = { bookingId: number; fundXdr: string; price: { amount: string; discount: string } };
+
+type Purchase = { busy: boolean; message?: string; error?: string };
+
+const LEVEL_NAMES: Record<string, string> = {
+  Explorer: "Explorer",
+  Voyager: "Voyager",
+  Globetrotter: "Globetrotter",
+  Legend: "Legend",
+};
+
+/** Upcoming events with a "buy ticket" flow: reserve, pay with Pollar, confirm. */
+export function EventsList({ signedIn }: { signedIn: boolean }) {
+  const { signAndSubmitTx } = usePollar();
+  const [events, setEvents] = useState<EventItem[] | null>(null);
+  const [membership, setMembership] = useState<Membership | null>(null);
+  const [purchases, setPurchases] = useState<Record<number, Purchase>>({});
+
+  useEffect(() => {
+    fetch("/api/events")
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setEvents);
+  }, []);
+
+  const loadMembership = useCallback(() => {
+    if (!signedIn) return setMembership(null);
+    fetch("/api/me/membership")
+      .then((res) => (res.ok ? res.json() : null))
+      .then(setMembership);
+  }, [signedIn]);
+
+  useEffect(loadMembership, [loadMembership]);
+
+  const track = (id: number, p: Purchase) => setPurchases((all) => ({ ...all, [id]: p }));
+
+  async function buy(event: EventItem) {
+    track(event.id, { busy: true, message: "Reservando en el escrow…" });
+    try {
+      const started = await post<Started>("/api/bookings", { eventId: event.id });
+      track(event.id, { busy: true, message: "Confirma el pago en Pollar…" });
+
+      const outcome = await signAndSubmitTx(started.fundXdr);
+      if (outcome.status !== "success" && outcome.status !== "pending") {
+        const detail = "details" in outcome ? outcome.details : undefined;
+        throw new Error(`Pollar no envió el pago (${outcome.status}${detail ? `: ${detail}` : ""})`);
+      }
+
+      track(event.id, { busy: true, message: "Pago enviado. Confirmando la reserva…" });
+      const confirmed = await confirmWithRetry(started.bookingId, outcome.hash);
+      const saved = BigInt(started.price.discount) > BigInt(0)
+        ? ` Ahorraste ${formatAmount(BigInt(started.price.discount))} ${event.currency} por tu nivel.`
+        : "";
+      track(event.id, {
+        busy: false,
+        message: `¡Listo! Reserva #${confirmed.bookingId} confirmada y ticket emitido.${saved}`,
+      });
+      loadMembership();
+    } catch (err) {
+      track(event.id, { busy: false, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  if (events === null) return <p className="text-sm opacity-70">Cargando eventos…</p>;
+
+  return (
+    <section className="w-full max-w-xl flex flex-col gap-4">
+      {membership && (
+        <div className="rounded-xl border border-black/10 dark:border-white/15 p-4 text-sm">
+          <p className="font-medium">Estela Pass · {LEVEL_NAMES[membership.level] ?? membership.level}</p>
+          <p className="opacity-70">
+            {membership.xp} XP · descuento {membership.discountBps / 100}% en tus próximas reservas
+          </p>
+        </div>
+      )}
+
+      {events.length === 0 && <p className="text-sm opacity-70">No hay eventos próximos.</p>}
+
+      {events.map((event) => {
+        const purchase = purchases[event.id];
+        return (
+          <article key={event.id} className="rounded-xl border border-black/10 dark:border-white/15 p-4 flex flex-col gap-2">
+            <h2 className="text-lg font-semibold">{event.title}</h2>
+            <p className="text-sm opacity-70">
+              {new Date(event.startsAt).toLocaleString("es-ES", { dateStyle: "long", timeStyle: "short" })} ·{" "}
+              {[event.venue, event.city].filter(Boolean).join(", ")}
+            </p>
+            {event.description && <p className="text-sm">{event.description}</p>}
+            {event.ticketPrice && (
+              <div className="flex items-center gap-3 mt-1">
+                <span className="font-medium">
+                  {formatAmount(BigInt(event.ticketPrice))} {event.currency}
+                </span>
+                <button
+                  onClick={() => buy(event)}
+                  disabled={!signedIn || purchase?.busy}
+                  className="rounded-full bg-foreground text-background px-4 h-9 text-sm font-medium disabled:opacity-40"
+                >
+                  {signedIn ? "Comprar ticket" : "Entra para comprar"}
+                </button>
+              </div>
+            )}
+            {purchase?.message && <p className="text-sm">{purchase.message}</p>}
+            {purchase?.error && <p className="text-sm text-red-600">{purchase.error}</p>}
+          </article>
+        );
+      })}
+    </section>
+  );
+}
+
+/** The fund transaction can take a few seconds to land; retry while it's pending. */
+async function confirmWithRetry(bookingId: number, fundHash: string, attempts = 6) {
+  for (let i = 0; ; i++) {
+    try {
+      return await post<{ bookingId: number }>(`/api/bookings/${bookingId}/confirm`, { fundHash });
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.status !== 409 || i >= attempts - 1) throw err;
+      await new Promise((r) => setTimeout(r, 2500));
+    }
+  }
+}

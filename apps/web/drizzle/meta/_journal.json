@@ -8,6 +8,20 @@
       "when": 1792949244512,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792958872235,
+      "tag": "0001_currency_xlm",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792958873940,
+      "tag": "0002_bookings_id_start",
+      "breakpoints": true
     }
   ]
 }
