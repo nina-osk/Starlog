@@ -7,6 +7,7 @@ import * as chain from "./chain";
 import { db, schema } from "./db";
 import * as duffel from "./duffel";
 import { env } from "./env";
+import { assertAdultOnFlight, PassengerError } from "./passenger";
 import { pricePackage, toUnits } from "./pricing";
 
 const { bookings, events, organizers, quotes, tickets } = schema;
@@ -51,6 +52,14 @@ export async function startPackageBooking(
     throw new BookingError("Esa oferta de vuelo ya no está disponible. Busca de nuevo.", 410);
   });
   if (offer.passengerIds.length !== 1) throw new BookingError("Por ahora los paquetes son para un solo pasajero.");
+  // Airlines reject bad passenger data only when ordering, i.e. after payment; catch
+  // it here so the traveler never pays for a booking that would be refunded.
+  try {
+    assertAdultOnFlight(input.passenger.bornOn, offer.slices[0].segments[0].departingAt);
+  } catch (err) {
+    if (err instanceof PassengerError) throw new BookingError(err.message);
+    throw err;
+  }
   const offerExpires = new Date(offer.expiresAt).getTime();
   if (offerExpires < Date.now() + 2 * 60_000) {
     throw new BookingError("Esa oferta de vuelo está por vencer. Busca de nuevo.", 410);
@@ -227,7 +236,14 @@ export async function confirmPackageBooking(session: Session, bookingId: number,
       order = await duffel.createOrder(offer, items.passengers);
     } catch (err) {
       console.error(err);
-      return refundAll("La aerolínea no pudo confirmar el vuelo.", "failed");
+      // 4xx from Duffel on ordering means the airline refused the passenger details.
+      const badData = err instanceof duffel.DuffelError && err.status >= 400 && err.status < 500;
+      return refundAll(
+        badData
+          ? "La aerolínea rechazó los datos del pasajero (revisa nombre, fecha de nacimiento, email y teléfono)."
+          : "La aerolínea no pudo confirmar el vuelo.",
+        "failed",
+      );
     }
     // Record the order before releasing, so a retry never books the flight twice.
     await database

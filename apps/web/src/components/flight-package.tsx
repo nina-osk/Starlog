@@ -110,6 +110,10 @@ export function FlightPackage({ event, onBooked }: { event: EventInfo; onBooked:
   }
 
   const payWith = withTicket ? event.currency : flightPayWith;
+  // Adults only (18+); the server re-checks against the actual flight date.
+  const adultCutoff = new Date();
+  adultCutoff.setFullYear(adultCutoff.getFullYear() - 18);
+  const latestBirthDate = adultCutoff.toISOString().slice(0, 10);
   const stablecoin = chosen?.totalCurrency === "USD" ? "USDC" : "EURC";
 
   if (!open) {
@@ -178,7 +182,17 @@ export function FlightPackage({ event, onBooked }: { event: EventInfo; onBooked:
               <option value="ms/f">Sra.</option>
               <option value="mr/m">Sr.</option>
             </select>
-            <input className={input} type="date" title="Fecha de nacimiento" value={pax.bornOn} onChange={(e) => setPax({ ...pax, bornOn: e.target.value })} required />
+            <label className="flex flex-col gap-0.5 text-xs opacity-80 col-span-2 sm:col-span-1">
+              Fecha de nacimiento del pasajero
+              <input
+                className={`${input} opacity-100`}
+                type="date"
+                max={latestBirthDate}
+                value={pax.bornOn}
+                onChange={(e) => setPax({ ...pax, bornOn: e.target.value })}
+                required
+              />
+            </label>
             <input className={input} type="email" placeholder="Email" value={pax.email} onChange={(e) => setPax({ ...pax, email: e.target.value })} required />
             <input className={input} placeholder="Teléfono (+34…)" value={pax.phoneNumber} onChange={(e) => setPax({ ...pax, phoneNumber: e.target.value.replace(/\s/g, "") })} required />
           </div>

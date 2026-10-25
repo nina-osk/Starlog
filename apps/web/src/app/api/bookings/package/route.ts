@@ -12,6 +12,7 @@ const body = z.object({
     gender: z.enum(["m", "f"]),
     givenName: z.string().trim().min(1).max(60),
     familyName: z.string().trim().min(1).max(60),
+    // Checked against the flight date in startPackageBooking (adults must be 18+).
     bornOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     email: z.string().email(),
     // E.164, as airlines require: +34600000000
