@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import "@pollar/react/styles.css";
 import "./globals.css";
 import { Providers } from "./providers";
 
@@ -24,7 +25,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
+    // Browser extensions (e.g. LanguageTool) add attributes to <html> before React
+    // hydrates; this only silences mismatches on this element, not its children.
+    <html lang="es" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
