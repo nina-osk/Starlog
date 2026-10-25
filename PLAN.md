@@ -263,6 +263,14 @@ Next.js route handlers en `apps/web` + Postgres (Drizzle) + tareas programadas (
 
 **Orden recomendado para el MVP**: 1 → 2 → 6 → 5 (solo ticket) → 7 → 9 → 4 y 5 con Duffel vuelos → Stays → 8 → 10.
 
+**Base de datos: Supabase** (decidido el 2026-10-25), accedida solo desde el servidor con Drizzle + postgres-js (`prepare: false` para el pooler de transacciones).
+
+**Avance (2026-10-25):**
+- ✅ Módulo 1, login SEP-10: `POST /api/auth/challenge`, `/verify` (anti-replay con la tabla `auth_challenges`, crea el usuario y la cookie httpOnly JWT de 7 días), `/logout`, `GET /api/auth/me`. Validez del challenge: 5 min + 30 s de margen (el SDK por sí solo acepta 5 min extra; lo cerramos). 12 tests con vitest.
+- ✅ Módulo 2, esquema: 10 tablas con RLS activado y sin políticas (la API anon de Supabase no puede leerlas); migración `apps/web/drizzle/0000_init.sql` **aplicada** en Supabase (región eu-north-1, Postgres 17) el 2026-10-25. Comprobado: la clave pública (anon) no puede insertar ni leer. Para migrar: `node --env-file=.env.local node_modules/drizzle-kit/bin.cjs migrate` (drizzle-kit no lee `.env.local` solo).
+- ✅ Cliente de la API de Supabase en el servidor con `@supabase/server` (`src/server/supabase.ts`, `createAdminClient`, solo servidor) para Storage y demás servicios; las tablas siguen por Drizzle. Conexión verificada con el proyecto `cazdoykkxjmhbtpouxqy`. Claves solo en `apps/web/.env.local`.
+- Pendiente de verificar con Pollar real: que `signTx` firme el challenge SEP-10 (lo esperamos por su doc, sin probar).
+
 ## 10. Fases
 
 | # | Fase | Contenido |
