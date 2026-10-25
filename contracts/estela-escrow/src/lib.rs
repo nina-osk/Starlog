@@ -1,11 +1,12 @@
 #![no_std]
 //! EstelaEscrow: holds a traveler's crypto payment until Estela confirms the booking.
 //!
-//! Money can only ever leave the contract towards the Estela treasury (release /
-//! the non-refunded part of a partial refund) or back to the traveler.
+//! Money can only ever leave the contract towards the traveler, the booking's payee
+//! (a partner organizer, up to its `payee_amount`) or the Estela treasury.
 
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttype, token, Address, Env, Vec,
+    contract, contractclient, contracterror, contractevent, contractimpl, contracttype, token,
+    Address, Env, Vec,
 };
 
 const DAY: u32 = 17_280; // ledgers per day, approx. (5 s per ledger)
@@ -14,6 +15,14 @@ const DAY: u32 = 17_280; // ledgers per day, approx. (5 s per ledger)
 // thousands of XLM. New entries already start with the network minimum (~7 days).
 const TTL_THRESHOLD: u32 = DAY;
 const TTL_EXTEND_TO: u32 = 7 * DAY;
+// USDC, EURC and XLM all use 7 decimals: 1 XP per whole unit paid.
+const XP_UNIT: i128 = 10_000_000;
+
+/// The part of EstelaPass the escrow uses. The escrow must hold its `awarder` role.
+#[contractclient(name = "LoyaltyClient")]
+pub trait Loyalty {
+    fn add_xp(env: Env, user: Address, xp: u32, caller: Address);
+}
 
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -30,6 +39,10 @@ pub struct Booking {
     pub traveler: Address,
     pub token: Address,
     pub amount: i128,
+    /// Partner organizer paid directly on release; `None` for Estela-only bookings.
+    pub payee: Option<Address>,
+    /// The payee's share of `amount`; the rest goes to the treasury.
+    pub payee_amount: i128,
     pub pay_before: u64,
     pub refund_until: u64,
     pub confirm_by: u64,
@@ -41,6 +54,7 @@ pub struct Booking {
 pub enum DataKey {
     Admin,
     Treasury,
+    Loyalty,
     Token(Address),
     Booking(u64),
 }
@@ -58,6 +72,7 @@ pub enum Error {
     TokenNotAllowed = 7,
     InvalidAmount = 8,
     InvalidDeadlines = 9,
+    InvalidPayee = 10,
 }
 
 /// Emitted on every state change, so the backend can follow bookings from chain events.
@@ -75,10 +90,17 @@ pub struct EstelaEscrow;
 
 #[contractimpl]
 impl EstelaEscrow {
-    pub fn __constructor(env: Env, admin: Address, treasury: Address, tokens: Vec<Address>) {
+    pub fn __constructor(
+        env: Env,
+        admin: Address,
+        treasury: Address,
+        loyalty: Address,
+        tokens: Vec<Address>,
+    ) {
         let s = env.storage().instance();
         s.set(&DataKey::Admin, &admin);
         s.set(&DataKey::Treasury, &treasury);
+        s.set(&DataKey::Loyalty, &loyalty);
         for t in tokens.iter() {
             s.set(&DataKey::Token(t), &true);
         }
@@ -86,12 +108,15 @@ impl EstelaEscrow {
 
     /// Admin registers a booking with the exact price and deadlines (all unix seconds).
     /// The traveler can only pay this exact amount, so they can't choose their own price.
+    /// A partner organizer (`payee`) gets `payee_amount` of it on release.
     pub fn create_booking(
         env: Env,
         id: u64,
         traveler: Address,
         token: Address,
         amount: i128,
+        payee: Option<Address>,
+        payee_amount: i128,
         pay_before: u64,
         refund_until: u64,
         confirm_by: u64,
@@ -99,6 +124,13 @@ impl EstelaEscrow {
         Self::admin(&env).require_auth();
         if amount <= 0 {
             return Err(Error::InvalidAmount);
+        }
+        let payee_ok = match payee {
+            Some(_) => payee_amount > 0 && payee_amount <= amount,
+            None => payee_amount == 0,
+        };
+        if !payee_ok {
+            return Err(Error::InvalidPayee);
         }
         if !env.storage().instance().has(&DataKey::Token(token.clone())) {
             return Err(Error::TokenNotAllowed);
@@ -113,6 +145,8 @@ impl EstelaEscrow {
             traveler,
             token,
             amount,
+            payee,
+            payee_amount,
             pay_before,
             refund_until,
             confirm_by,
@@ -142,7 +176,8 @@ impl EstelaEscrow {
         Ok(())
     }
 
-    /// Admin confirms the booking with the providers: funds go to the treasury.
+    /// Admin confirms the booking with the providers: the payee gets its share, the
+    /// treasury the rest, and the traveler earns XP.
     pub fn release(env: Env, id: u64) -> Result<(), Error> {
         Self::admin(&env).require_auth();
         let mut b = Self::load(&env, id)?;
@@ -151,36 +186,47 @@ impl EstelaEscrow {
         }
         b.status = Status::Released;
         Self::save(&env, id, &b);
-        token::Client::new(&env, &b.token).transfer(
-            &env.current_contract_address(),
-            &Self::treasury(&env),
-            &b.amount,
-        );
+        Self::pay_out(&env, &b, b.payee_amount, b.amount - b.payee_amount);
+
+        // A loyalty failure must never lock the funds, so its result is ignored:
+        // the backend (also an awarder) can grant the missing XP later.
+        let xp = u32::try_from(b.amount / XP_UNIT).unwrap_or(u32::MAX);
+        if xp > 0 {
+            let _ = LoyaltyClient::new(&env, &Self::loyalty(&env)).try_add_xp(
+                &b.traveler,
+                &xp,
+                &env.current_contract_address(),
+            );
+        }
         Ok(())
     }
 
-    /// Admin applies the provider's cancellation policy: `to_traveler` goes back to the
-    /// traveler and the rest to the treasury.
-    pub fn refund(env: Env, id: u64, to_traveler: i128) -> Result<(), Error> {
+    /// Admin applies the cancellation policy: `to_traveler` goes back to the traveler,
+    /// `to_payee` (at most its `payee_amount`) to the organizer, and the rest to the
+    /// treasury.
+    pub fn refund(env: Env, id: u64, to_traveler: i128, to_payee: i128) -> Result<(), Error> {
         Self::admin(&env).require_auth();
         let mut b = Self::load(&env, id)?;
         if b.status != Status::Funded {
             return Err(Error::InvalidState);
         }
-        if to_traveler < 0 || to_traveler > b.amount {
+        if to_traveler < 0 || to_payee < 0 || to_payee > b.payee_amount {
+            return Err(Error::InvalidAmount);
+        }
+        let rest = b.amount - to_traveler - to_payee;
+        if rest < 0 {
             return Err(Error::InvalidAmount);
         }
         b.status = Status::Refunded;
         Self::save(&env, id, &b);
-        let tk = token::Client::new(&env, &b.token);
-        let me = env.current_contract_address();
         if to_traveler > 0 {
-            tk.transfer(&me, &b.traveler, &to_traveler);
+            token::Client::new(&env, &b.token).transfer(
+                &env.current_contract_address(),
+                &b.traveler,
+                &to_traveler,
+            );
         }
-        let rest = b.amount - to_traveler;
-        if rest > 0 {
-            tk.transfer(&me, &Self::treasury(&env), &rest);
-        }
+        Self::pay_out(&env, &b, to_payee, rest);
         Ok(())
     }
 
@@ -236,6 +282,24 @@ impl EstelaEscrow {
 
     fn treasury(env: &Env) -> Address {
         env.storage().instance().get(&DataKey::Treasury).unwrap()
+    }
+
+    fn loyalty(env: &Env) -> Address {
+        env.storage().instance().get(&DataKey::Loyalty).unwrap()
+    }
+
+    /// Sends `to_payee` to the booking's payee and `to_treasury` to the treasury.
+    fn pay_out(env: &Env, b: &Booking, to_payee: i128, to_treasury: i128) {
+        let tk = token::Client::new(env, &b.token);
+        let me = env.current_contract_address();
+        if let Some(payee) = &b.payee {
+            if to_payee > 0 {
+                tk.transfer(&me, payee, &to_payee);
+            }
+        }
+        if to_treasury > 0 {
+            tk.transfer(&me, &Self::treasury(env), &to_treasury);
+        }
     }
 
     fn load(env: &Env, id: u64) -> Result<Booking, Error> {
