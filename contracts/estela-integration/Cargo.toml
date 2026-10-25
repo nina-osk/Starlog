@@ -1,0 +1,17 @@
+[package]
+name = "estela-integration"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Test-only crate: runs EstelaEscrow, EstelaPass and EstelaStamps together.
+# It is not a contract (no cdylib), so nothing here is built to wasm or deployed.
+[lib]
+crate-type = ["lib"]
+doctest = false
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+estela-escrow = { path = "../estela-escrow" }
+estela-pass = { path = "../estela-pass" }
+estela-stamps = { path = "../estela-stamps" }

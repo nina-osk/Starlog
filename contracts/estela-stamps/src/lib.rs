@@ -11,7 +11,7 @@ use soroban_sdk::{
     panic_with_error, Address, Env, String, Symbol, Vec,
 };
 use stellar_access::access_control::{set_admin, AccessControl};
-use stellar_macros::only_role;
+use stellar_macros::{only_admin, only_role};
 use stellar_tokens::non_fungible::{
     enumerable::{Enumerable, NonFungibleEnumerable},
     Base, Compose, NonFungibleToken,
@@ -99,12 +99,13 @@ impl EstelaStamps {
     pub fn __constructor(e: &Env, admin: Address, pass: Address, uri: String) {
         set_admin(e, &admin);
         e.storage().instance().set(&DataKey::Pass, &pass);
-        Base::set_metadata(
-            e,
-            uri,
-            String::from_str(e, "Estela Stamps"),
-            String::from_str(e, "ESTAMP"),
-        );
+        Self::set_metadata(e, uri);
+    }
+
+    /// Points token metadata at a new backend (e.g. once its domain exists).
+    #[only_admin]
+    pub fn set_base_uri(e: &Env, uri: String) {
+        Self::set_metadata(e, uri);
     }
 
     /// Issues one stamp per (user, kind, ref_id) and adds its XP to the user's pass.
@@ -158,6 +159,15 @@ impl EstelaStamps {
 }
 
 impl EstelaStamps {
+    fn set_metadata(e: &Env, uri: String) {
+        Base::set_metadata(
+            e,
+            uri,
+            String::from_str(e, "Estela Stamps"),
+            String::from_str(e, "ESTAMP"),
+        );
+    }
+
     fn pass(e: &Env) -> PassClient<'_> {
         let address: Address = e.storage().instance().get(&DataKey::Pass).unwrap();
         PassClient::new(e, &address)

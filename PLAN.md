@@ -244,6 +244,25 @@ CONFIRMED → CANCEL_REQUESTED → REFUNDED (según política)
 CONFIRMED → (fecha de regreso) → sello Trip
 ```
 
+### 9.1 Backend: qué hay que construir
+
+Next.js route handlers en `apps/web` + Postgres (Drizzle) + tareas programadas (Vercel Cron). Secretos **solo en el servidor**: clave del admin (`estela-admin`), clave del backend (`estela-backend`: rol `issuer` en Stamps y `awarder` en Pass), secret key de Pollar, token de Duffel y la clave para firmar los QR.
+
+| # | Módulo | Qué hace | Endpoints / tareas |
+|---|---|---|---|
+| 1 | **Autenticación** | Pollar no expone un token verificable en el servidor, así que usamos **SEP-10** (Stellar Web Auth): el backend genera un challenge, el usuario lo firma con `pollar.signTx(xdr)` y el backend lo verifica (`WebAuth` de `@stellar/stellar-sdk`) → cookie de sesión httpOnly. Roles: viajero, organizador, staff, admin | `POST /api/auth/challenge`, `POST /api/auth/verify`, `POST /api/auth/logout` |
+| 2 | **Base de datos** | `users` (wallet, email, rol) · `organizers` (wallet de cobro, comisión) · `events` (socio o URL de Luma, fechas, precio, cupo, política) · `quotes` · `bookings` (= id on-chain, estado, desglose, payee, ids de Duffel, hashes) · `tickets` (secreto QR, check-in) · `stamps` · `xp_ledger` · `chain_cursor` · `jobs` | Migraciones con Drizzle |
+| 3 | **Catálogo y panel del organizador** | CRUD de eventos del socio; importar evento de Luma por URL (lee los metadatos públicos, el admin completa) | `GET /api/events`, `POST/PATCH /api/organizer/events`, `POST /api/admin/events/import-luma` |
+| 4 | **Cotización** | Pide ofertas a Duffel (vuelos: offer request; hoteles: search → rates → quote), calcula el precio (costo + cargo/markup + comisión), lee `discount_bps_of(user)` del Pass y aplica el descuento **sobre el margen**, con margen mínimo. Caducidad = la de la oferta de Duffel (máx. 15 min). EUR → cobrar en EURC; USD → USDC (evita FX) | `POST /api/quotes`, `GET /api/quotes/:id` |
+| 5 | **Orquestador de reservas** | Máquina de estados de la §9: `create_booking` (firma admin) → devuelve la XDR de `fund` para que el usuario firme con Pollar → al ver `Funded`, re-verifica la oferta y reserva en Duffel (`balance`) → `release`, o `refund` si falla. Idempotente, con reintentos; expira lo no pagado | `POST /api/bookings`, `GET /api/bookings/:id`, `POST /api/bookings/:id/cancel`; tarea `process-bookings` |
+| 6 | **Servicio on-chain + indexador** | Firma con las claves del servidor usando los bindings TS. El indexador lee `getEvents` del RPC (`BookingChanged`, `XpChanged`, `StampIssued/Revoked`) y actualiza la DB; guarda el cursor (el RPC solo retiene ~7 días) | Tarea `index-chain` (cada minuto) |
+| 7 | **Tickets y check-in** | Al confirmar una reserva con evento → ticket. La app del viajero muestra un QR rotativo (HMAC del secreto, válido 60 s); la app del staff lo escanea → valida → `mint_stamp(Event)`. Viaje completado: tarea diaria → `mint_stamp(Trip)` | `GET /api/tickets/:id/qr`, `POST /api/checkin`; tarea `trip-stamps` |
+| 8 | **Webhooks de Duffel** | Cancelación o cambio de la aerolínea → reembolso desde la treasury + `remove_xp` | `POST /api/webhooks/duffel` (verificar firma) |
+| 9 | **Metadatos de los NFTs** | JSON con nombre, imagen según el nivel y atributos (XP, nivel / evento). Los contratos apuntan aquí con `set_base_uri` | `GET /api/meta/pass/:id`, `GET /api/meta/stamps/:id` |
+| 10 | **Panel admin y tesorería** | Reservas, reembolsos manuales, saldo de Duffel, alertas del float, lotes de off-ramp (en el MVP, manual + demo SEP-24) | `/api/admin/*` |
+
+**Orden recomendado para el MVP**: 1 → 2 → 6 → 5 (solo ticket) → 7 → 9 → 4 y 5 con Duffel vuelos → Stays → 8 → 10.
+
 ## 10. Fases
 
 | # | Fase | Contenido |
@@ -273,9 +292,9 @@ CONFIRMED → (fecha de regreso) → sello Trip
 2. ✅ **EstelaEscrow v2** (2026-10-25): `payee`, `payee_amount`, reparto en `release`, `refund(id, to_traveler, to_payee)`, llamada a `add_xp` (1 XP por unidad; si el contrato de fidelización falla, el `release` sigue adelante y el backend repone el XP). 18 tests con un contrato de fidelización simulado; el wasm compila (10,4 KB).
 3. ✅ **EstelaPass** (2026-10-25): soulbound (transfer/approve fallan), se acuña al primer `add_xp`, `remove_xp` sin underflow, XP con saturación, niveles + `discount_bps_of`, evento `XpChanged`, solo el rol `awarder` cambia el XP. 8 tests; wasm de 24,5 KB.
 4. ✅ **EstelaStamps** (2026-10-25): Enumerable, soulbound, `mint_stamp(user, Event|Trip, ref_id)` con el rol `issuer` (un sello por `(user, kind, ref_id)`, +100/+50 XP en EstelaPass de forma atómica), `revoke_stamp` solo para el rol `issuer` (quita el sello y su XP sin la firma del dueño; los usuarios no pueden quemar). 9 tests con el EstelaPass real; wasm de 29,5 KB.
-5. **Test de integración** con los tres contratos: fund → release → payee cobra → XP sube → sello → nivel cambia.
-6. **Deploy en testnet**: Pass → Stamps → Escrow v2; conceder roles (`awarder` al escrow, a Stamps y al backend; `issuer` al backend). Guardar las direcciones en `deploy/testnet.json`.
-7. **Regenerar los bindings TS** de los tres contratos.
+5. ✅ **Test de integración** (2026-10-25, crate `contracts/estela-integration`, solo tests, sin wasm): 6 tests con los tres contratos reales y los roles como en el deploy. Cubren el paquete completo (138 al organizador, 762 a la treasury, 900 XP → Voyager, sellos, segundo viaje → Globetrotter), la cancelación sin pagos ni XP, el XP quitado por el backend tras un reembolso tardío, el escrow sin rol que igual paga y la autorización real (solo firma el admin o el issuer; la llamada entre contratos se autoriza sola). Total del workspace: 41 tests.
+6. ✅ **Deploy en testnet** (2026-10-25): Pass `CB6ENR37…WL6S`, Stamps `CDQQ7PKX…HF7ZD`, Escrow v2 `CDUARFKL…HCTD`; roles asignados y verificados; `set_base_uri` (admin) añadido para cambiar la URL temporal `https://estela.invalid/meta/...` cuando exista el backend. Smoke test en cadena OK (reserva de 10 XLM con payee + sello → 110 XP). Todo en `deploy/testnet.json`. **Ojo**: subir cada wasm costó entre 3 900 y 6 500 XLM de testnet; se pagó con cuentas desechables de friendbot.
+7. ✅ **Bindings TS** regenerados en `packages/estela-escrow`, `packages/estela-pass` y `packages/estela-stamps` (compilan con `tsc`).
 
 ### Paso 2: web base
 1. `PollarProvider` en `apps/web` + botón de login + mostrar la wallet.

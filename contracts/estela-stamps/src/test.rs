@@ -148,6 +148,24 @@ fn stamps_cannot_be_transferred_or_approved() {
 }
 
 #[test]
+fn admin_can_move_metadata_to_a_new_backend() {
+    let s = setup();
+    let token = s.stamps.mint_stamp(&s.user, &StampKind::Event, &1, &s.issuer);
+    s.stamps
+        .set_base_uri(&String::from_str(&s.env, "https://api.estela.app/meta/stamps/"));
+    assert_eq!(
+        s.stamps.token_uri(&token),
+        String::from_str(&s.env, "https://api.estela.app/meta/stamps/0")
+    );
+
+    s.env.set_auths(&[]);
+    assert!(s
+        .stamps
+        .try_set_base_uri(&String::from_str(&s.env, "https://evil.example/"))
+        .is_err());
+}
+
+#[test]
 fn minting_fails_if_stamps_lost_the_awarder_role() {
     let s = setup();
     // Without the awarder role the XP call fails, so the whole mint is rolled back.

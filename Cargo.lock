@@ -746,6 +746,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "estela-integration"
+version = "0.1.0"
+dependencies = [
+ "estela-escrow",
+ "estela-pass",
+ "estela-stamps",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "estela-pass"
 version = "0.1.0"
 dependencies = [

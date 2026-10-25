@@ -3,29 +3,59 @@
   "rpcUrl": "https://soroban-testnet.stellar.org",
   "networkPassphrase": "Test SDF Network ; September 2015",
   "protocolVersion": 29,
-  "estelaEscrow": "CBOIYZWJMSMNET35AO2ZVJXGP5BM3HQVTLIH4TZCOCUC35N6BRS2CPIE",
+  "sdkVersion": "soroban-sdk 28 + OpenZeppelin stellar-contracts 0.8.0",
+  "contracts": {
+    "estelaEscrow": "CDUARFKLW2YDKWIUZAAFY2BQCWOJU46H6NVY4ZKHRPLTSDTHYPZAHCTD",
+    "estelaPass": "CB6ENR37I5ZIGRAWHTYBTWI4ZCOTZKK2I75CLLHCDIUTP3QG4VO2WL6S",
+    "estelaStamps": "CDQQ7PKXRNOYZUW47USR6OJCODKPH45OCYRODEMYHO7LJZDO7Y2HF7ZD"
+  },
+  "wasmHashes": {
+    "estelaEscrow": "bb49e37f052c81829a1e3b192ab681d6979a991feed69407dbf885c4737efc5d",
+    "estelaPass": "846ca85e81f7593be4ba8824f9a90075427ddde944766a9cbbf119304f9669f0",
+    "estelaStamps": "709503e7740391705064fe44393cf03e4944a9cb36190f101944b0516c3022da"
+  },
+  "metadataBaseUris": {
+    "estelaPass": "https://estela.invalid/meta/pass/",
+    "estelaStamps": "https://estela.invalid/meta/stamps/",
+    "note": "Placeholders until the backend has a domain; update with set_base_uri (admin)."
+  },
+  "roles": {
+    "estelaPass.awarder": ["estelaEscrow", "estelaStamps", "backend"],
+    "estelaStamps.issuer": ["backend"]
+  },
   "accounts": {
     "admin": "GBWB3GYU4PUW3JYG5QA26ZIXQZGLFG652HTVA2QQSOVWOTLHKVYYS7WV",
     "treasury": "GA536WS7HR6SZPOOMK7TMJ5BPTBYOGLXA2Z6BJKAGCFFOAWKMMMIV7CW",
-    "traveler": "GDC46GXLZ5OJ4UX6ZCIHHGPMGQ3RQGUZJQJRHIBEPJGFZO6N6DQSBFN7"
+    "backend": "GBVYHWLSCHBBTZ32QUBAW5SOR3SQVNL24FPI7RVUDCESXAQS2XTFPAET",
+    "traveler": "GDC46GXLZ5OJ4UX6ZCIHHGPMGQ3RQGUZJQJRHIBEPJGFZO6N6DQSBFN7",
+    "testOrganizer": "GAKMO2MGYQOR5ICOACHRB7MYBMSA6YO3H4MCULGD7HRKOSBGZNQ45NGJ"
   },
   "assets": {
     "USDC": {
       "issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
-      "sac": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA"
+      "sac": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+      "note": "Circle testnet USDC (home_domain centre.io)"
     },
     "EURC": {
       "issuer": "GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO",
-      "sac": "CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ"
+      "sac": "CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ",
+      "note": "Circle testnet EURC (home_domain circle.com)"
     },
     "XLM": {
       "sac": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
     }
   },
   "smokeTest": {
+    "date": "2026-10-25",
     "booking": 1,
-    "create": "https://stellar.expert/explorer/testnet/tx/df83ef1d063e41d7647759b529b0dfdb590a25436e3e6661b1485f687eea0a62",
-    "fund": "https://stellar.expert/explorer/testnet/tx/a7387f8ebd2d1eecbd48f5ced331e075ed0611286456152eded5844eeaf27d92",
-    "release": "https://stellar.expert/explorer/testnet/tx/5a66586e4a4ae3022645c181c41acd52cd74597536485c858cc2067e035ec1e7"
+    "detail": "10 XLM booking, 3 XLM to testOrganizer as payee; traveler XP 110 (10 from release + 100 from Event stamp ref 1)",
+    "create": "https://stellar.expert/explorer/testnet/tx/e31d08e7b83af10a3a6af13c7bdf1d42b228e9ff5122ba2080973c24b7866ddc",
+    "fund": "https://stellar.expert/explorer/testnet/tx/eb1dbfe288be31a6d5ac04761aab955c8513f9525c5ade7230602a9aa71444de",
+    "release": "https://stellar.expert/explorer/testnet/tx/509f5d080135bc0facf907cca5caf65a8c5fee9cbcb4a1d7787a48c03975b881",
+    "eventStamp": "https://stellar.expert/explorer/testnet/tx/7d0878cffa820df99b59a4851650edb93f52cdfa085669ef9ddce2495c3c6fae"
+  },
+  "deployCost": "Testnet resource fees were very high on 2026-10-25: ~5,200 XLM (pass), ~6,500 XLM (stamps), ~3,900 XLM max (escrow) for the WASM uploads. Uploads were paid by throwaway friendbot accounts (estela-deployer, estela-deployer2).",
+  "previous": {
+    "estelaEscrowV1": "CBOIYZWJMSMNET35AO2ZVJXGP5BM3HQVTLIH4TZCOCUC35N6BRS2CPIE"
   }
 }

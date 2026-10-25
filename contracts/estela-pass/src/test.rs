@@ -131,3 +131,23 @@ fn metadata_points_to_the_backend() {
         String::from_str(&s.env, "https://estela.example/pass/0")
     );
 }
+
+#[test]
+fn admin_can_move_metadata_to_a_new_backend() {
+    let s = setup();
+    s.client.add_xp(&s.user, &1, &s.awarder);
+    s.client
+        .set_base_uri(&String::from_str(&s.env, "https://api.estela.app/meta/pass/"));
+    assert_eq!(
+        s.client.token_uri(&0),
+        String::from_str(&s.env, "https://api.estela.app/meta/pass/0")
+    );
+    assert_eq!(s.client.name(), String::from_str(&s.env, "Estela Pass"));
+
+    // Nobody but the admin can change it.
+    s.env.set_auths(&[]);
+    assert!(s
+        .client
+        .try_set_base_uri(&String::from_str(&s.env, "https://evil.example/"))
+        .is_err());
+}

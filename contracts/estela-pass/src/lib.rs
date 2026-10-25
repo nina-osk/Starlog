@@ -11,7 +11,7 @@ use soroban_sdk::{
     Env, String, Symbol, Vec,
 };
 use stellar_access::access_control::{set_admin, AccessControl};
-use stellar_macros::only_role;
+use stellar_macros::{only_admin, only_role};
 use stellar_tokens::non_fungible::{Base, Compose, NonFungibleToken};
 
 const DAY: u32 = 17_280; // ledgers per day, approx. (5 s per ledger)
@@ -88,12 +88,13 @@ impl EstelaPass {
     /// backend with the holder's current level.
     pub fn __constructor(e: &Env, admin: Address, uri: String) {
         set_admin(e, &admin);
-        Base::set_metadata(
-            e,
-            uri,
-            String::from_str(e, "Estela Pass"),
-            String::from_str(e, "EPASS"),
-        );
+        Self::set_metadata(e, uri);
+    }
+
+    /// Points token metadata at a new backend (e.g. once its domain exists).
+    #[only_admin]
+    pub fn set_base_uri(e: &Env, uri: String) {
+        Self::set_metadata(e, uri);
     }
 
     /// Adds XP to `user`, minting their pass first if they don't have one yet.
@@ -134,6 +135,15 @@ impl EstelaPass {
 }
 
 impl EstelaPass {
+    fn set_metadata(e: &Env, uri: String) {
+        Base::set_metadata(
+            e,
+            uri,
+            String::from_str(e, "Estela Pass"),
+            String::from_str(e, "EPASS"),
+        );
+    }
+
     fn set_xp(e: &Env, user: &Address, xp: u32) {
         Self::store(e, &DataKey::Xp(user.clone()), &xp);
         XpChanged {
