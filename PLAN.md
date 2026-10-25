@@ -323,7 +323,59 @@ Next.js route handlers en `apps/web` + Postgres (Drizzle) + tareas programadas (
 3. Chain svc: `create_booking`, `release`, `refund` y `mint_stamp` firmados en el servidor.
 4. Primer flujo de punta a punta en testnet: crear la reserva → `fund` con Pollar → `release` → ver el XP.
 
-## 12. Decisiones abiertas
+## 12. Pagos para agentes de IA (x402) — X1 construido el 2026-10-25
+
+**Estado X1:** `@x402/core` + `@x402/stellar` 2.28 con un wrapper propio `withAgentPayment` (`src/server/x402.ts`) porque `@x402/next` exige Next 16 y estamos en 15.5; mismo flujo (402 → verificar → handler → liquidar solo si status < 400). Rutas: `GET /api/agent/events` (gratis), `POST /api/agent/flights/search` (0,01 USDC), `POST /api/agent/quotes` (0,005 USDC). Facilitador x402.org (stellar:testnet, comisiones patrocinadas, sin API key); cobro a la treasury (`X402_PAY_TO`). Agente de demo: `scripts/agent-demo.mjs` con `@x402/fetch`, cuenta `estela-agent` (`GBDTBGWC…V7HJ`, trustline USDC). Verificado: el 402 sale con el precio correcto (100000 unidades = 0,01 USDC al SAC de USDC, payTo treasury, `areFeesSponsored`).
+
+### Qué es x402
+Protocolo abierto (nacido en Coinbase) que hace útil el código HTTP **402 Payment Required**: una API cobra **por petición** y un agente de IA paga solo, sin cuentas ni tarjetas.
+```
+Agente → GET /recurso                                  → Estela
+Agente ← 402 + requisitos (precio, token, a quién pagar)
+Agente firma una transferencia de USDC (solo las "auth entries" de Soroban)
+Agente → GET /recurso + cabecera de pago               → Estela
+Estela → facilitador /verify + /settle                  → Stellar (~5 s)
+Agente ← 200 + el recurso
+```
+- En Stellar el agente **no necesita XLM**: el facilitador arma la transacción y paga la comisión de red.
+- Token por defecto: **USDC de Circle** (el mismo SAC `CBIELTK6…DAMA` que ya acepta el escrow); vale cualquier token SEP-41 (EURC también).
+- Facilitadores: **x402.org/Coinbase** (solo testnet, sin API key), **OpenZeppelin Channels** (testnet y mainnet, con API key), o uno propio en nuestro servidor (sin terceros; pagamos nosotros el XLM de las comisiones).
+- Paquetes oficiales (v2.28.0, sep-2026): `@x402/next` (`withX402` para route handlers: **cobra solo si la respuesta sale bien**, status < 400), `@x402/core`, `@x402/stellar`; para el agente, `@x402/fetch`.
+- Alternativa sin facilitador: **MPP Charge** (mismo concepto, transferencia SAC directa).
+
+### Encaje en Estela: qué sí y qué no
+- ✅ **Sí: cobrar a agentes por usar la API** (búsqueda de vuelos, cotizaciones). Cada búsqueda en Duffel nos cuesta; x402 la monetiza y frena abusos. **Nueva línea de ingresos** (§6).
+- ✅ **Sí: que un agente reserve** por el usuario. Pero **el pago de la reserva va por el escrow, no por x402**: x402 "exact" transfiere directo al cobrador y **no tiene reembolsos ni plazos**. Para cientos de euros necesitamos la protección del escrow (refund si Duffel falla, `reclaim` si no confirmamos). El agente firma el `fund` con su propia clave, igual que hoy firma Pollar.
+- ❌ **No: reemplazar el escrow por x402** para cobrar vuelos o tickets.
+
+### Pasos
+**X1 · Estela vende su API a agentes** (1 día aprox.)
+1. Facilitador: **x402.org en testnet** para la demo (sin key); **OZ Channels** para mainnet (pedir API key).
+2. Instalar `@x402/next @x402/core @x402/stellar`.
+3. Nuevo espacio `/api/agent/*`, sin login (el pago identifica):
+   - `GET /api/agent/events` — gratis (descubrimiento).
+   - `POST /api/agent/flights/search` — **0,01 USDC** por búsqueda, con `withX402`.
+   - `POST /api/agent/quotes` — **0,005 USDC**: precio desglosado de un paquete (vuelo + cargo + ticket − descuento del nivel).
+   - `payTo` = la treasury (ya tiene trustline USDC ✓).
+4. Agente de demo: script con `@x402/fetch` + esquema Stellar, una cuenta de testnet con USDC del faucet y **0 XLM**.
+5. Pruebas en testnet: 402 → pago → 200; una respuesta con error **no cobra**; pago inválido → 402.
+
+**X2 · El agente reserva por el usuario** (1 día aprox.)
+6. Login del agente con **SEP-10** usando su propia clave (ya lo soporta `/api/auth/*`).
+7. Reutilizar `POST /api/bookings` y `/api/bookings/package`: el agente recibe la XDR de `fund`, la firma con su clave, y llama a `confirm`. Mismas protecciones (saldo, pasajero adulto, trustlines, reembolso automático).
+8. A quién va el XP: en el MVP a la wallet que paga (la del agente). Más adelante, un campo "viajero" para dárselo al usuario real.
+
+**X3 · Que los agentes encuentren a Estela**
+9. Publicar un **servidor MCP de Estela** (herramientas `buscar_eventos`, `buscar_vuelos`, `cotizar`, `reservar`) y/o un OpenAPI en `/api/agent/openapi.json`; opcional, catálogo **Bazaar** de Vellar.
+10. Demo de hackathon: **Claude busca, cotiza y reserva** un viaje a un evento pagando en USDC desde su propia wallet.
+
+### Riesgos y decisiones
+- Facilitadores de testnet (x402.org, Vellar) **no sirven para mainnet**; OZ Channels requiere API key; uno propio nos hace pagar el XLM de comisiones.
+- Los precios de x402 se expresan en USD (USDC); para EURC hay que usar la forma explícita `{ amount, asset }`.
+- La wallet del agente necesita **trustline de USDC** y saldo.
+- Decidir: precio por llamada, si las búsquedas pagadas por un agente cuentan como "cotización" válida, y límites por agente.
+
+## 13. Decisiones abiertas
 
 - [ ] ¿**Fecha límite** del hackathon? (para recortar fases si hace falta)
 - [ ] **Precios de Estela** (sección 6): comisión sobre tickets (5–10 %), cargo de servicio por vuelo (5–15 €), markup de hoteles (8–15 %), prima de paquete y margen mínimo después del descuento.
@@ -339,3 +391,5 @@ Next.js route handlers en `apps/web` + Postgres (Drizzle) + tareas programadas (
 - Luma API (OpenAPI): https://public-api.luma.com/openapi.json
 - Anchors SEP-24 / SEP-31: https://developers.stellar.org/docs/platforms/anchor-platform
 - Cierre de Amadeus Self-Service: https://ignav.com/docs/amadeus-self-service-shutdown
+- x402 en Stellar: https://developers.stellar.org/docs/build/agentic-payments/x402 · spec: https://www.x402.org · ejemplos: https://github.com/stellar/x402-stellar · paquetes `@x402/next`, `@x402/stellar`, `@x402/fetch`
+- OZ Channels (facilitador): https://channels.openzeppelin.com/x402/testnet · key: https://channels.openzeppelin.com/testnet/gen

@@ -36,6 +36,12 @@ const schema = z.object({
   FLIGHT_SERVICE_FEE: z.string().regex(/^\d+(\.\d+)?$/).default("10"),
   // Testnet only: XLM charged per EUR/USD when a package is paid in XLM (no oracle yet).
   DEMO_XLM_PER_FIAT: z.string().regex(/^\d+(\.\d+)?$/).default("1"),
+  // x402 pay-per-request for AI agents. x402.org's facilitator serves stellar:testnet
+  // with sponsored fees and no API key; mainnet: OpenZeppelin Channels.
+  X402_FACILITATOR_URL: z.string().url().default("https://x402.org/facilitator"),
+  X402_NETWORK: z.enum(["stellar:testnet", "stellar:pubnet"]).default("stellar:testnet"),
+  // Receives the per-call USDC (needs a USDC trustline): Estela's treasury.
+  X402_PAY_TO: z.string().startsWith("G"),
   // Bearer token for /api/cron/* (Vercel Cron sends it). 32+ random characters.
   CRON_SECRET: z.string().min(32),
 });
