@@ -18,7 +18,13 @@ type EventItem = {
 
 type Membership = { xp: number; level: string; discountBps: number; passId: number | null };
 
-type Started = { bookingId: number; fundXdr: string; price: { amount: string; discount: string } };
+type Started = {
+  bookingId: number;
+  /** Null when the booking was already paid and only needs confirming. */
+  fundXdr: string | null;
+  alreadyPaid: boolean;
+  price: { amount: string; discount: string };
+};
 
 type Purchase = { busy: boolean; message?: string; error?: string };
 
@@ -30,7 +36,7 @@ const LEVEL_NAMES: Record<string, string> = {
 };
 
 /** Upcoming events with a "buy ticket" flow: reserve, pay with Pollar, confirm. */
-export function EventsList({ signedIn }: { signedIn: boolean }) {
+export function EventsList({ signedIn, onPurchased }: { signedIn: boolean; onPurchased: () => void }) {
   const { signAndSubmitTx } = usePollar();
   const [events, setEvents] = useState<EventItem[] | null>(null);
   const [membership, setMembership] = useState<Membership | null>(null);
@@ -57,16 +63,20 @@ export function EventsList({ signedIn }: { signedIn: boolean }) {
     track(event.id, { busy: true, message: "Reservando en el escrow…" });
     try {
       const started = await post<Started>("/api/bookings", { eventId: event.id });
-      track(event.id, { busy: true, message: "Confirma el pago en Pollar…" });
 
-      const outcome = await signAndSubmitTx(started.fundXdr);
-      if (outcome.status !== "success" && outcome.status !== "pending") {
-        const detail = "details" in outcome ? outcome.details : undefined;
-        throw new Error(`Pollar no envió el pago (${outcome.status}${detail ? `: ${detail}` : ""})`);
+      let fundHash: string | undefined;
+      if (started.fundXdr) {
+        track(event.id, { busy: true, message: "Confirma el pago en Pollar…" });
+        const outcome = await signAndSubmitTx(started.fundXdr);
+        if (outcome.status !== "success" && outcome.status !== "pending") {
+          const detail = "details" in outcome ? outcome.details : undefined;
+          throw new Error(`Pollar no envió el pago (${outcome.status}${detail ? `: ${detail}` : ""})`);
+        }
+        fundHash = outcome.hash;
       }
 
-      track(event.id, { busy: true, message: "Pago enviado. Confirmando la reserva…" });
-      const confirmed = await confirmWithRetry(started.bookingId, outcome.hash);
+      track(event.id, { busy: true, message: "Pago recibido. Confirmando la reserva…" });
+      const confirmed = await confirmWithRetry(started.bookingId, fundHash);
       const saved = BigInt(started.price.discount) > BigInt(0)
         ? ` Ahorraste ${formatAmount(BigInt(started.price.discount))} ${event.currency} por tu nivel.`
         : "";
@@ -75,6 +85,7 @@ export function EventsList({ signedIn }: { signedIn: boolean }) {
         message: `¡Listo! Reserva #${confirmed.bookingId} confirmada y ticket emitido.${saved}`,
       });
       loadMembership();
+      onPurchased();
     } catch (err) {
       track(event.id, { busy: false, error: err instanceof Error ? err.message : String(err) });
     }
@@ -129,7 +140,7 @@ export function EventsList({ signedIn }: { signedIn: boolean }) {
 }
 
 /** The fund transaction can take a few seconds to land; retry while it's pending. */
-async function confirmWithRetry(bookingId: number, fundHash: string, attempts = 6) {
+async function confirmWithRetry(bookingId: number, fundHash: string | undefined, attempts = 6) {
   for (let i = 0; ; i++) {
     try {
       return await post<{ bookingId: number }>(`/api/bookings/${bookingId}/confirm`, { fundHash });

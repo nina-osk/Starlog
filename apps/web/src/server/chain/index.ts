@@ -129,7 +129,14 @@ export async function mintStamp(user: string, kind: StampKind, refId: bigint): P
   return submit(tx, "mint_stamp");
 }
 
-export type Membership = { xp: number; level: Level["tag"]; discountBps: number; passId: number | null };
+/** The token id of `user`'s stamp for this event/booking, if minted. */
+export async function stampOf(user: string, kind: StampKind, refId: bigint): Promise<number | null> {
+  const stamps = new StampsClient({ ...base(), contractId: env().STAMPS_CONTRACT_ID });
+  const tx = await stamps.stamp_of({ user, kind: { tag: kind, values: undefined }, ref_id: refId });
+  return tx.result ?? null;
+}
+
+export type Membership ={ xp: number; level: Level["tag"]; discountBps: number; passId: number | null };
 
 /** The member's Estela Pass, read without a transaction. */
 export async function membership(user: string): Promise<Membership> {

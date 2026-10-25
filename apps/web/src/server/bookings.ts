@@ -1,6 +1,6 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import type { Session } from "./auth/session";
 import * as chain from "./chain";
 import { db, schema } from "./db";
@@ -32,6 +32,9 @@ export async function startTicketBooking(session: Session, eventId: number) {
   const { event, organizer } = row;
   if (!event.ticketPrice) throw new BookingError("this event has no paid tickets");
   if (event.startsAt <= new Date()) throw new BookingError("this event has already started");
+
+  const resumed = await resumeOwnBooking(session, eventId, BigInt(event.ticketPrice));
+  if (resumed) return resumed;
 
   if (event.capacity !== null) {
     const [{ sold }] = await database
@@ -94,11 +97,50 @@ export async function startTicketBooking(session: Session, eventId: number) {
       .set({ txHashes: { create: createHash }, updatedAt: new Date() })
       .where(eq(bookings.id, booking.id));
     const fundXdr = await chain.buildFundTx(BigInt(booking.id), session.wallet);
-    return { bookingId: booking.id, price, payBefore: deadlines.payBefore, fundXdr };
+    return { bookingId: booking.id, price, payBefore: deadlines.payBefore, fundXdr, alreadyPaid: false };
   } catch (err) {
     await database.update(bookings).set({ status: "failed", updatedAt: new Date() }).where(eq(bookings.id, booking.id));
     throw err;
   }
+}
+
+/**
+ * One live booking per traveler and event. A confirmed one blocks a second purchase;
+ * an unpaid one still inside its pay window is handed back (so cancelling the Pollar
+ * prompt and retrying doesn't create another); one already paid on-chain only needs
+ * confirming. Unpaid bookings past their window are marked expired.
+ */
+async function resumeOwnBooking(session: Session, eventId: number, ticketPrice: bigint) {
+  const database = db();
+  const [mine] = await database
+    .select()
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.userId, session.userId),
+        eq(bookings.eventId, eventId),
+        inArray(bookings.status, ["escrow_created", "funded", "confirmed"]),
+      ),
+    )
+    .orderBy(desc(bookings.id))
+    .limit(1);
+  if (!mine) return null;
+  if (mine.status === "confirmed") throw new BookingError("you already have a ticket for this event", 409);
+
+  const amount = BigInt(mine.amount);
+  const payeeAmount = BigInt(mine.payeeAmount);
+  const price = { amount, payeeAmount, commission: amount - payeeAmount, discount: ticketPrice - amount };
+  const base = { bookingId: mine.id, price, payBefore: mine.payBefore };
+
+  const onChain = await chain.getBooking(BigInt(mine.id));
+  if (onChain?.status.tag === "Funded" || onChain?.status.tag === "Released") {
+    return { ...base, fundXdr: null, alreadyPaid: true };
+  }
+  if (onChain?.status.tag === "Pending" && mine.payBefore > new Date()) {
+    return { ...base, fundXdr: await chain.buildFundTx(BigInt(mine.id), session.wallet), alreadyPaid: false };
+  }
+  await database.update(bookings).set({ status: "expired", updatedAt: new Date() }).where(eq(bookings.id, mine.id));
+  return null;
 }
 
 /**
