@@ -18,7 +18,15 @@ type Props = {
  * to and opens its own session cookie.
  */
 export function LoginPanel({ user, onUserChange }: Props) {
-  const { isAuthenticated, verified, wallet, openLoginModal, logout, getClient } = usePollar();
+  const {
+    isAuthenticated,
+    verified,
+    wallet,
+    openLoginModal,
+    openWalletBalanceModal,
+    logout,
+    getClient,
+  } = usePollar();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Only try automatically once per address, so a failure doesn't loop.
@@ -105,6 +113,15 @@ export function LoginPanel({ user, onUserChange }: Props) {
       ) : (
         <p>{busy ? "Firmando el acceso a Estela…" : "Falta vincular la sesión de Estela."}</p>
       )}
+      {wallet?.address && (
+        <button
+          type="button"
+          onClick={() => openWalletBalanceModal()}
+          className="self-start underline"
+        >
+          Ver saldo
+        </button>
+      )}
       {error && (
         <p className="text-red-600">
           {error}{" "}
@@ -119,3 +136,4 @@ export function LoginPanel({ user, onUserChange }: Props) {
     </div>
   );
 }
+
