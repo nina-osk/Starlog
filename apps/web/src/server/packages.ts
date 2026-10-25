@@ -80,7 +80,7 @@ export async function startPackageBooking(
           inArray(bookings.status, ["escrow_created", "funded", "confirmed"]),
         ),
       );
-    if (owned) throw new BookingError("you already have a ticket for this event: book the flight alone", 409);
+    if (owned) throw new BookingError("ya tienes un ticket para este evento: reserva solo el vuelo", 409);
     ticket = { price: BigInt(row.event.ticketPrice), commissionBps: row.organizer.commissionBps };
     payee = row.organizer.payoutWallet;
   }

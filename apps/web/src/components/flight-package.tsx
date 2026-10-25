@@ -1,7 +1,7 @@
 "use client";
 
 import { usePollar } from "@pollar/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { post } from "@/lib/api";
 import { confirmWithRetry } from "@/lib/bookings";
 import { formatAmount } from "@/server/pricing";
@@ -33,6 +33,22 @@ export function FlightPackage({ event, onBooked }: { event: EventInfo; onBooked:
   const [origin, setOrigin] = useState("");
   const [date, setDate] = useState(dayBefore);
   const [withTicket, setWithTicket] = useState(Boolean(event.ticketPrice));
+  // Flight-only bookings can be paid in the stablecoin matching the fare; with the
+  // ticket included, the event's currency applies.
+  const [flightPayWith, setFlightPayWith] = useState("EURC");
+  // Travelers who already hold a ticket for this event only need the flight.
+  const [hasTicket, setHasTicket] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/me/tickets")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((tickets: { eventId: number }[]) => {
+        const owned = tickets.some((t) => Number(t.eventId) === event.id);
+        setHasTicket(owned);
+        if (owned) setWithTicket(false);
+      });
+  }, [open, event.id]);
   const [offers, setOffers] = useState<Offer[] | null>(null);
   const [chosen, setChosen] = useState<Offer | null>(null);
   const [pax, setPax] = useState({ title: "ms", gender: "f", givenName: "", familyName: "", bornOn: "", email: "", phoneNumber: "" });
@@ -63,13 +79,13 @@ export function FlightPackage({ event, onBooked }: { event: EventInfo; onBooked:
       setBusy("Reservando en el escrow…");
       const started = await post<Started>("/api/bookings/package", {
         offerId: chosen.id,
-        payWith: event.currency,
+        payWith,
         eventId: withTicket ? event.id : undefined,
         passenger: pax,
       });
       let fundHash: string | undefined;
       if (started.fundXdr) {
-        setBusy(`Confirma en Pollar el pago de ${formatAmount(BigInt(started.price.amount))} ${event.currency}…`);
+        setBusy(`Confirma en Pollar el pago de ${formatAmount(BigInt(started.price.amount))} ${payWith}…`);
         const outcome = await signAndSubmitTx(started.fundXdr);
         if (outcome.status !== "success" && outcome.status !== "pending") {
           const detail = "details" in outcome ? outcome.details : undefined;
@@ -92,6 +108,9 @@ export function FlightPackage({ event, onBooked }: { event: EventInfo; onBooked:
       setBusy(null);
     }
   }
+
+  const payWith = withTicket ? event.currency : flightPayWith;
+  const stablecoin = chosen?.totalCurrency === "USD" ? "USDC" : "EURC";
 
   if (!open) {
     return (
@@ -126,7 +145,10 @@ export function FlightPackage({ event, onBooked }: { event: EventInfo; onBooked:
             return (
               <li key={o.id}>
                 <button
-                  onClick={() => setChosen(o)}
+                  onClick={() => {
+                    setChosen(o);
+                    setFlightPayWith(o.totalCurrency === "USD" ? "USDC" : "EURC");
+                  }}
                   className="w-full text-left rounded-lg border border-black/10 dark:border-white/15 p-2 hover:bg-black/5 dark:hover:bg-white/5"
                 >
                   <span className="font-medium">{segs.map((s) => s.carrier).join(" + ")}</span> · {time(segs[0].departingAt)} →{" "}
@@ -160,14 +182,24 @@ export function FlightPackage({ event, onBooked }: { event: EventInfo; onBooked:
             <input className={input} type="email" placeholder="Email" value={pax.email} onChange={(e) => setPax({ ...pax, email: e.target.value })} required />
             <input className={input} placeholder="Teléfono (+34…)" value={pax.phoneNumber} onChange={(e) => setPax({ ...pax, phoneNumber: e.target.value.replace(/\s/g, "") })} required />
           </div>
-          {event.ticketPrice && (
+          {hasTicket && <p className="opacity-70">Ya tienes ticket para este evento: reservas solo el vuelo.</p>}
+          {event.ticketPrice && !hasTicket && (
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={withTicket} onChange={(e) => setWithTicket(e.target.checked)} />
               Incluir el ticket de {event.title} ({formatAmount(BigInt(event.ticketPrice))} {event.currency})
             </label>
           )}
+          {!withTicket && (
+            <label className="flex items-center gap-2">
+              Pagar en
+              <select className={input} value={flightPayWith} onChange={(e) => setFlightPayWith(e.target.value)}>
+                <option value={stablecoin}>{stablecoin}</option>
+                <option value="XLM">XLM (demo)</option>
+              </select>
+            </label>
+          )}
           <button disabled={busy !== null} className="self-start rounded-full bg-foreground text-background px-4 h-9 font-medium disabled:opacity-40">
-            Reservar {withTicket ? "vuelo + ticket" : "vuelo"} · pagar en {event.currency}
+            Reservar {withTicket ? "vuelo + ticket" : "vuelo"} · pagar en {payWith}
           </button>
         </form>
       )}
