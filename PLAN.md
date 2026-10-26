@@ -367,11 +367,25 @@ Agente ← 200 + el recurso
 **X2 · El agente reserva por el usuario** (1 día aprox.)
 6. Login del agente con **SEP-10** usando su propia clave (ya lo soporta `/api/auth/*`).
 7. Reutilizar `POST /api/bookings` y `/api/bookings/package`: el agente recibe la XDR de `fund`, la firma con su clave, y llama a `confirm`. Mismas protecciones (saldo, pasajero adulto, trustlines, reembolso automático).
-8. A quién va el XP: en el MVP a la wallet que paga (la del agente). Más adelante, un campo "viajero" para dárselo al usuario real.
+8. A quién va el XP: en el MVP a la wallet que paga (la del agente). Para dárselo al viajero real, ver **X4**.
 
 **X3 · Que los agentes encuentren a Estela**
 9. Publicar un **servidor MCP de Estela** (herramientas `buscar_eventos`, `buscar_vuelos`, `cotizar`, `reservar`) y/o un OpenAPI en `/api/agent/openapi.json`; opcional, catálogo **Bazaar** de Vellar.
 10. Demo de hackathon: **Claude busca, cotiza y reserva** un viaje a un evento pagando en USDC desde su propia wallet.
+
+**X4 · El agente paga, el viajero recibe** (pendiente)
+Problema: el escrow da el XP a quien paga (`b.traveler` en `release`, `contracts/estela-escrow/src/lib.rs:193`), y el ticket del evento y los sellos también quedan en esa wallet. Cuando reserva un agente, todo se lo queda **la wallet del agente**, no la persona que viaja. Lo más grave es el **ticket**: el viajero necesita su QR para entrar al evento.
+Solución: separar **quién paga** de **quién viaja**. El agente indica en la reserva la wallet del viajero (campo `traveler`, opcional; por defecto, la del agente).
+
+| Qué | Para quién |
+|---|---|
+| Pago y reembolsos (`refund`, `cancel`, `reclaim`) | Wallet que paga (el agente) |
+| XP y descuento del Estela Pass | Wallet del viajero |
+| Ticket del evento y sellos del viaje | Wallet del viajero |
+
+11. **Opción A, para el hackathon (sin redeploy):** `POST /api/bookings/package` acepta `traveler` (dirección `G…`). El escrow sigue dando el XP al agente en `release`, y justo después de `confirm` el backend (que tiene el rol `awarder` en EstelaPass) llama a `remove_xp(agente)` + `add_xp(viajero)`. El ticket y los sellos se guardan a nombre del viajero en la base de datos (crear el usuario por su wallet si no existe). El descuento de nivel de `cotizar` y `reservar` se calcula con el viajero. El MCP `reservar` añade el parámetro `wallet_viajero`.
+12. **Opción B, la definitiva (cambia el contrato):** EstelaEscrow v3 con dos campos en `Booking`, `payer` (firma `fund`; recibe los reembolsos) y `beneficiary` (recibe el XP en `release`). Exige volver a desplegar el contrato en testnet (entre 3 900 y 6 500 XLM por wasm), regenerar los bindings y migrar el backend.
+13. Riesgos: un agente podría asignar el ticket a cualquier wallet. Es aceptable porque paga él, pero conviene que el viajero vea la reserva en "Mis tickets" y que el email de confirmación vaya al pasajero. Si se cancela, el XP se quita al viajero (no al agente).
 
 ### Riesgos y decisiones
 - Facilitadores de testnet (x402.org, Vellar) **no sirven para mainnet**; OZ Channels requiere API key; uno propio nos hace pagar el XLM de comisiones.
